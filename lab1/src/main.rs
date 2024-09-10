@@ -14,7 +14,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use uuid::Uuid;
 
 const PORT: u16 = 7123;
-const HEADER: [u8; 4] = [0xDC, 0xAF, 0xFF, 0x00];
+const HEADER: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
 const DELAY: Duration = Duration::from_secs(1);
 const PACKET_SIZE: usize = HEADER.len() + mem::size_of::<Uuid>();
 
