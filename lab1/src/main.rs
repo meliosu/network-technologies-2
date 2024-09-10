@@ -1,15 +1,15 @@
 use std::{
     collections::HashMap,
-    env, io,
+    env,
     mem::{self, MaybeUninit},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
 
 use anyhow::anyhow;
-
+use colored::Colorize;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use uuid::Uuid;
 
@@ -17,55 +17,6 @@ const PORT: u16 = 7123;
 const HEADER: [u8; 4] = [0xDC, 0xAF, 0xFF, 0x00];
 const DELAY: Duration = Duration::from_secs(1);
 const PACKET_SIZE: usize = HEADER.len() + mem::size_of::<Uuid>();
-
-fn setup_socket(addr: IpAddr) -> anyhow::Result<Socket> {
-    let domain = match addr {
-        IpAddr::V4(_) => Domain::IPV4,
-        IpAddr::V6(_) => Domain::IPV6,
-    };
-
-    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-        .map_err(|err| anyhow!("creating socket: {err}"))?;
-
-    socket
-        .set_reuse_address(true)
-        .map_err(|err| anyhow!("enabling address reuse for socket: {err}"))?;
-
-    let multicast_addr: SockAddr = SocketAddr::new(addr, PORT).into();
-
-    socket
-        .bind(&multicast_addr)
-        .map_err(|err| anyhow!("binding socket: {err}"))?;
-
-    match addr {
-        IpAddr::V4(ipv4) => {
-            socket
-                .join_multicast_v4(&ipv4, &Ipv4Addr::UNSPECIFIED)
-                .map_err(|err| anyhow!("joining multicast group (ipv4): {err}"))?;
-        }
-
-        IpAddr::V6(ipv6) => {
-            socket
-                .join_multicast_v6(&ipv6, 0)
-                .map_err(|err| anyhow!("joining multicast group (ipv6): {err}"))?;
-        }
-    }
-
-    Ok(socket)
-}
-
-fn parse_args() -> anyhow::Result<IpAddr> {
-    let addr = env::args().nth(1).ok_or(anyhow!("no address provided"))?;
-    let addr: IpAddr = addr
-        .parse()
-        .map_err(|err| anyhow!("{addr} is not a valid ip address: {err}"))?;
-
-    if !addr.is_multicast() {
-        return Err(anyhow!("{addr} is not a multicast address"));
-    }
-
-    Ok(addr)
-}
 
 fn main() {
     let addr = match parse_args() {
@@ -85,8 +36,9 @@ fn main() {
     };
 
     let uuid = Uuid::new_v4();
-
     let clients: Mutex<HashMap<Uuid, Instant>> = Mutex::new(HashMap::new());
+
+    println!("+++ Starting client with uuid {uuid} +++");
 
     thread::scope(|s| {
         s.spawn(|| loop {
@@ -96,7 +48,7 @@ fn main() {
 
             clients.retain(|uuid, time| {
                 if time.elapsed() > DELAY {
-                    println!("- {uuid}");
+                    println!("{}", format!("- {uuid}").red());
                     false
                 } else {
                     true
@@ -139,9 +91,65 @@ fn main() {
                 let now = Instant::now();
 
                 if clients.insert(peer_uuid, now).is_none() {
-                    println!("+ {peer_uuid}");
+                    println!("{}", format!("+ {peer_uuid}").green());
                 }
             }
         });
     });
+}
+
+fn setup_socket(addr: IpAddr) -> anyhow::Result<Socket> {
+    if !addr.is_multicast() {
+        return Err(anyhow!("{addr} is not a multicast address"));
+    }
+
+    let domain = match addr {
+        IpAddr::V4(_) => Domain::IPV4,
+        IpAddr::V6(_) => Domain::IPV6,
+    };
+
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
+        .map_err(|err| anyhow!("creating socket: {err}"))?;
+
+    socket
+        .set_reuse_address(true)
+        .map_err(|err| anyhow!("enabling address reuse for socket: {err}"))?;
+
+    let bind_addr: SockAddr = if cfg!(target_os = "windows") {
+        let addr = match addr {
+            IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            IpAddr::V6(_) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+        };
+
+        SocketAddr::new(addr, PORT).into()
+    } else {
+        SocketAddr::new(addr, PORT).into()
+    };
+
+    socket
+        .bind(&bind_addr)
+        .map_err(|err| anyhow!("binding socket: {err}"))?;
+
+    match addr {
+        IpAddr::V4(ipv4) => {
+            socket
+                .join_multicast_v4(&ipv4, &Ipv4Addr::UNSPECIFIED)
+                .map_err(|err| anyhow!("joining multicast group (ipv4): {err}"))?;
+        }
+
+        IpAddr::V6(ipv6) => {
+            socket
+                .join_multicast_v6(&ipv6, 0)
+                .map_err(|err| anyhow!("joining multicast group (ipv6): {err}"))?;
+        }
+    }
+
+    Ok(socket)
+}
+
+fn parse_args() -> anyhow::Result<IpAddr> {
+    let addr = env::args().nth(1).ok_or(anyhow!("no address provided"))?;
+
+    addr.parse()
+        .map_err(|err| anyhow!("{addr} is not an ip address: {err}"))
 }
