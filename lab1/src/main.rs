@@ -1,88 +1,88 @@
 use std::{
     collections::HashMap,
-    env,
-    mem::MaybeUninit,
-    net::{IpAddr, SocketAddr},
+    env, io,
+    mem::{self, MaybeUninit},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
+
+use anyhow::anyhow;
 
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use uuid::Uuid;
 
 const PORT: u16 = 7123;
 const HEADER: [u8; 4] = [0xDC, 0xAF, 0xFF, 0x00];
+const DELAY: Duration = Duration::from_secs(1);
+const PACKET_SIZE: usize = HEADER.len() + mem::size_of::<Uuid>();
 
-fn main() {
-    let addr = match env::args().nth(1) {
-        Some(addr) => addr,
-        None => {
-            eprintln!("please provide group address");
-            return;
-        }
+fn setup_socket(addr: IpAddr) -> anyhow::Result<Socket> {
+    let domain = match addr {
+        IpAddr::V4(_) => Domain::IPV4,
+        IpAddr::V6(_) => Domain::IPV6,
     };
 
-    let addr: IpAddr = match addr.parse() {
-        Ok(addr) => addr,
-        Err(err) => {
-            eprintln!("{addr} is not a valid ip address: {err}");
-            return;
-        }
-    };
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
+        .map_err(|err| anyhow!("creating socket: {err}"))?;
 
-    if !addr.is_multicast() {
-        eprintln!("{addr} is not a multicast address");
-        return;
-    }
+    socket
+        .set_reuse_address(true)
+        .map_err(|err| anyhow!("enabling address reuse for socket: {err}"))?;
 
-    let domain = if addr.is_ipv4() {
-        Domain::IPV4
-    } else {
-        Domain::IPV6
-    };
+    let multicast_addr: SockAddr = SocketAddr::new(addr, PORT).into();
 
-    let socket = match Socket::new(domain, Type::DGRAM, Some(Protocol::UDP)) {
-        Ok(socket) => socket,
-        Err(err) => {
-            eprintln!("error creating socket: {err}");
-            return;
-        }
-    };
-
-    match socket.reuse_address() {
-        Ok(_) => {}
-        Err(err) => {
-            eprintln!("error reusing socket address: {err}");
-            return;
-        }
-    }
-
-    match socket.bind(&SocketAddr::new(addr, PORT).into()) {
-        Ok(_) => {}
-        Err(err) => {
-            eprintln!("error binding socket: {err}");
-            return;
-        }
-    }
+    socket
+        .bind(&multicast_addr)
+        .map_err(|err| anyhow!("binding socket: {err}"))?;
 
     match addr {
-        IpAddr::V4(ipv4) => match socket.join_multicast_v4(&ipv4, &ipv4) {
-            Ok(_) => {}
-            Err(err) => {
-                eprintln!("error joining multicast group: {err}");
-                return;
-            }
-        },
+        IpAddr::V4(ipv4) => {
+            socket
+                .join_multicast_v4(&ipv4, &Ipv4Addr::UNSPECIFIED)
+                .map_err(|err| anyhow!("joining multicast group (ipv4): {err}"))?;
+        }
 
-        IpAddr::V6(ipv6) => match socket.join_multicast_v6(&ipv6, 0) {
-            Ok(_) => {}
-            Err(err) => {
-                eprintln!("error joining multicast group: {err}");
-                return;
-            }
-        },
+        IpAddr::V6(ipv6) => {
+            socket
+                .join_multicast_v6(&ipv6, 0)
+                .map_err(|err| anyhow!("joining multicast group (ipv6): {err}"))?;
+        }
     }
+
+    Ok(socket)
+}
+
+fn parse_args() -> anyhow::Result<IpAddr> {
+    let addr = env::args().nth(1).ok_or(anyhow!("no address provided"))?;
+    let addr: IpAddr = addr
+        .parse()
+        .map_err(|err| anyhow!("{addr} is not a valid ip address: {err}"))?;
+
+    if !addr.is_multicast() {
+        return Err(anyhow!("{addr} is not a multicast address"));
+    }
+
+    Ok(addr)
+}
+
+fn main() {
+    let addr = match parse_args() {
+        Ok(addr) => addr,
+        Err(err) => {
+            eprintln!("error parsing args: {err}");
+            return;
+        }
+    };
+
+    let socket = match setup_socket(addr) {
+        Ok(socket) => socket,
+        Err(err) => {
+            eprintln!("error setting up socket: {err}");
+            return;
+        }
+    };
 
     let uuid = Uuid::new_v4();
 
@@ -90,26 +90,34 @@ fn main() {
 
     thread::scope(|s| {
         s.spawn(|| loop {
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(DELAY);
 
             let mut clients = clients.lock().unwrap();
 
-            clients.retain(|_, time| time.elapsed() < Duration::from_secs(1));
+            clients.retain(|uuid, time| {
+                if time.elapsed() > DELAY {
+                    println!("- {uuid}");
+                    false
+                } else {
+                    true
+                }
+            });
         });
 
         s.spawn(|| loop {
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(DELAY / 4);
 
-            let sockaddr: SockAddr = SocketAddr::new(addr, PORT).into();
+            let group_address: SockAddr = SocketAddr::new(addr, PORT).into();
 
             socket
-                .send_to(&[&HEADER[..], &uuid.as_bytes()[..]].concat(), &sockaddr)
+                .send_to(
+                    &[&HEADER[..], &uuid.as_bytes()[..]].concat(),
+                    &group_address,
+                )
                 .unwrap();
         });
 
         s.spawn(|| {
-            const PACKET_SIZE: usize = HEADER.len() + std::mem::size_of::<Uuid>();
-
             let mut buffer: [MaybeUninit<u8>; PACKET_SIZE] = [MaybeUninit::uninit(); PACKET_SIZE];
 
             loop {
@@ -117,30 +125,22 @@ fn main() {
 
                 let buffer: &[u8; PACKET_SIZE] = unsafe { std::mem::transmute(&buffer) };
 
-                let Some(peer_uuid) = buffer.strip_prefix(&HEADER) else {
-                    eprintln!("wrong packet");
+                let Some(peer_uuid) = buffer
+                    .strip_prefix(&HEADER)
+                    .and_then(|bytes| bytes.try_into().ok())
+                    .map(|bytes| Uuid::from_bytes(bytes))
+                    .filter(|peer_uuid| *peer_uuid != uuid)
+                else {
                     continue;
                 };
-
-                let Ok(peer_uuid) = peer_uuid.try_into() else {
-                    eprintln!("not an uuid");
-                    continue;
-                };
-
-                let peer_uuid = Uuid::from_bytes(peer_uuid);
-
-                if peer_uuid == uuid {
-                    eprintln!("self");
-                    continue;
-                }
-
-                let now = Instant::now();
 
                 let mut clients = clients.lock().unwrap();
 
-                println!("+ {peer_uuid}");
+                let now = Instant::now();
 
-                clients.insert(peer_uuid, now);
+                if clients.insert(peer_uuid, now).is_none() {
+                    println!("+ {peer_uuid}");
+                }
             }
         });
     });
