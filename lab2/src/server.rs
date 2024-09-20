@@ -91,8 +91,9 @@ impl Connection {
 
             if timer.elapsed().as_secs() >= 3 {
                 println!(
-                    "{}: (last 3 seconds) {}/s (session) {}/s",
+                    "{} [{:.1}%]: (last 3 seconds) {}/s (session) {}/s",
                     request.name,
+                    100. * bytes_rcvd as f64 / request.len as f64,
                     bytes_to_hr(bytes_rcvd_3s as f64 / timer.elapsed().as_secs_f64()),
                     bytes_to_hr(bytes_rcvd as f64 / start.elapsed().as_secs_f64())
                 );
@@ -111,7 +112,12 @@ impl Connection {
             );
         }
 
-        println!("{}: received {} bytes", request.name, bytes_rcvd);
+        println!(
+            "{}: received {} ({} bytes)",
+            request.name,
+            bytes_to_hr(bytes_rcvd as f64),
+            bytes_rcvd
+        );
 
         self.send(&TransferComplete::new(bytes_rcvd))?;
 
