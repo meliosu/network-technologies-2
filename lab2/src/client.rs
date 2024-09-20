@@ -59,13 +59,7 @@ impl Client {
             len,
         ))?;
 
-        //let request = TransferRequest::new(file.as_ref().to_string_lossy().to_string(), len);
-        //self.socket.write(&request.to_bytes())?;
-
         let response: TransferResponse = self.recv()?;
-
-        //let read = self.socket.read(&mut buffer)?;
-        //let response = TransferResponse::from_bytes(&buffer[..read]);
 
         match response {
             TransferResponse::Success => {}

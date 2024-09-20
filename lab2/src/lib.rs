@@ -62,3 +62,15 @@ pub fn format_sockaddr(addr: &SockAddr) -> String {
         format!("UNKNOWN")
     }
 }
+
+pub fn bytes_to_hr(bytes: f64) -> String {
+    if bytes < 1024.0 {
+        format!("{:.2}B", bytes)
+    } else if bytes < 1024. * 1024. {
+        format!("{:.2}KiB", bytes / 1024.0)
+    } else if bytes < 1024. * 1024. * 1024. {
+        format!("{:.2}MiB", bytes / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2}GiB", bytes / (1024.0 * 1024.0 * 1024.0))
+    }
+}

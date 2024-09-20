@@ -17,6 +17,9 @@ use socket2::SockAddr;
 use socket2::Socket;
 use socket2::Type;
 
+use crate::bytes_to_hr;
+use crate::format_sockaddr;
+
 use super::TransferComplete;
 use super::TransferRequest;
 use super::TransferResponse;
@@ -88,10 +91,10 @@ impl Connection {
 
             if timer.elapsed().as_secs() >= 3 {
                 println!(
-                    "{}: (last 3 seconds) {} bytes/s (session) {} bytes/s",
+                    "{}: (last 3 seconds) {}/s (session) {}/s",
                     request.name,
-                    bytes_rcvd_3s as f64 / timer.elapsed().as_secs_f64(),
-                    bytes_rcvd as f64 / start.elapsed().as_secs_f64(),
+                    bytes_to_hr(bytes_rcvd_3s as f64 / timer.elapsed().as_secs_f64()),
+                    bytes_to_hr(bytes_rcvd as f64 / start.elapsed().as_secs_f64())
                 );
 
                 timer = Instant::now();
@@ -102,15 +105,17 @@ impl Connection {
 
         if !flag {
             println!(
-                "{}: (session) {} bytes/s",
+                "{}: (session) {}/s",
                 request.name,
-                bytes_rcvd as f64 / start.elapsed().as_secs_f64()
+                bytes_to_hr(bytes_rcvd as f64 / start.elapsed().as_secs_f64())
             );
         }
 
         println!("{}: received {} bytes", request.name, bytes_rcvd);
 
         self.send(&TransferComplete::new(bytes_rcvd))?;
+
+        println!("{}: connection closed", format_sockaddr(&self.addr));
 
         Ok(())
     }
