@@ -1,9 +1,17 @@
 use serde::Deserialize;
 use serde::Serialize;
 use serde_binary::binary_stream::Endian;
+use socket2::SockAddr;
 
+#[derive(Serialize, Deserialize)]
 pub struct TransferComplete {
     pub len: u64,
+}
+
+impl TransferComplete {
+    pub fn new(len: u64) -> Self {
+        Self { len }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -44,3 +52,13 @@ impl TransferResponse {
 
 pub mod client;
 pub mod server;
+
+pub fn format_sockaddr(addr: &SockAddr) -> String {
+    if let Some(ipv4) = addr.as_socket_ipv4() {
+        format!("{ipv4}")
+    } else if let Some(ipv6) = addr.as_socket_ipv6() {
+        format!("{ipv6}")
+    } else {
+        format!("UNKNOWN")
+    }
+}

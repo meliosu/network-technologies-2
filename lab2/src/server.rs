@@ -17,6 +17,7 @@ use socket2::SockAddr;
 use socket2::Socket;
 use socket2::Type;
 
+use super::TransferComplete;
 use super::TransferRequest;
 use super::TransferResponse;
 
@@ -57,6 +58,7 @@ impl Connection {
         let mut out = match File::options()
             .write(true)
             .create(true)
+            .truncate(true)
             .open(PathBuf::from("uploads").join(&request.name))
         {
             Ok(file) => {
@@ -70,6 +72,11 @@ impl Connection {
             }
         };
 
+        let start = Instant::now();
+        let mut timer = Instant::now();
+        let mut bytes_rcvd_3s = 0;
+        let mut flag = false;
+
         let mut bytes_rcvd = 0;
 
         while bytes_rcvd < request.len {
@@ -77,7 +84,33 @@ impl Connection {
             out.write(&buffer[..rcvd])?;
 
             bytes_rcvd += rcvd as u64;
+            bytes_rcvd_3s += rcvd as u64;
+
+            if timer.elapsed().as_secs() >= 3 {
+                println!(
+                    "{}: (last 3 seconds) {} bytes/s (session) {} bytes/s",
+                    request.name,
+                    bytes_rcvd_3s as f64 / timer.elapsed().as_secs_f64(),
+                    bytes_rcvd as f64 / start.elapsed().as_secs_f64(),
+                );
+
+                timer = Instant::now();
+                bytes_rcvd_3s = 0;
+                flag = true;
+            }
         }
+
+        if !flag {
+            println!(
+                "{}: (session) {} bytes/s",
+                request.name,
+                bytes_rcvd as f64 / start.elapsed().as_secs_f64()
+            );
+        }
+
+        println!("{}: received {} bytes", request.name, bytes_rcvd);
+
+        self.send(&TransferComplete::new(bytes_rcvd))?;
 
         Ok(())
     }

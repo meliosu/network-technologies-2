@@ -3,7 +3,7 @@ use std::thread;
 use args::Args;
 use clap::Parser;
 
-use lab2::server::Server;
+use lab2::{format_sockaddr, server::Server};
 
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
@@ -13,6 +13,8 @@ fn main() -> std::io::Result<()> {
 
     loop {
         let mut conn = server.accept().unwrap();
+
+        println!("new connection: {}", format_sockaddr(&conn.addr));
 
         thread::spawn(move || {
             conn.transfer().unwrap();

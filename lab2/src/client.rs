@@ -5,11 +5,16 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::path::Path;
 
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use serde_binary::binary_stream::Endian;
 use socket2::Domain;
 use socket2::Protocol;
 use socket2::SockAddr;
 use socket2::Socket;
 use socket2::Type;
+
+use crate::TransferComplete;
 
 use super::TransferRequest;
 use super::TransferResponse;
@@ -28,17 +33,39 @@ impl Client {
         self.socket.connect(&SockAddr::from(addr))
     }
 
+    fn send<T: Serialize>(&mut self, value: &T) -> io::Result<usize> {
+        self.socket
+            .write(&serde_binary::to_vec(value, Endian::Big).unwrap())
+    }
+
+    fn recv<T: DeserializeOwned>(&mut self) -> io::Result<T> {
+        let mut buffer = [0u8; 8192];
+        let read = self.socket.read(&mut buffer)?;
+        Ok(serde_binary::from_slice(&buffer[..read], Endian::Big).unwrap())
+    }
+
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.socket.write(buffer)
+    }
+
     pub fn transfer<P: AsRef<Path>>(&mut self, file: P) -> io::Result<()> {
         let mut out = File::open(file.as_ref())?;
         let len = out.metadata()?.len();
 
         let mut buffer = [0u8; 8192];
 
-        let request = TransferRequest::new(file.as_ref().to_string_lossy().to_string(), len);
-        self.socket.write(&request.to_bytes())?;
+        self.send(&TransferRequest::new(
+            file.as_ref().to_string_lossy().to_string(),
+            len,
+        ))?;
 
-        let read = self.socket.read(&mut buffer)?;
-        let response = TransferResponse::from_bytes(&buffer[..read]);
+        //let request = TransferRequest::new(file.as_ref().to_string_lossy().to_string(), len);
+        //self.socket.write(&request.to_bytes())?;
+
+        let response: TransferResponse = self.recv()?;
+
+        //let read = self.socket.read(&mut buffer)?;
+        //let response = TransferResponse::from_bytes(&buffer[..read]);
 
         match response {
             TransferResponse::Success => {}
@@ -52,10 +79,14 @@ impl Client {
 
         while bytes_sent < len {
             let read = out.read(&mut buffer)?;
-            let sent = self.socket.write(&buffer[..read])?;
+            let sent = self.write(&buffer[..read])?;
 
             bytes_sent += sent as u64;
         }
+
+        let complete: TransferComplete = self.recv()?;
+
+        println!("complete. bytes transfered: {}", complete.len);
 
         Ok(())
     }
