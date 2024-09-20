@@ -1,15 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct Announce {
-    pub len: usize,
-    pub filename: String,
+pub struct TransferRequest {
+    pub len: u64,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub enum AnnounceResponse {
-    Ready,
-    NotEnoughSpace,
-    TooBigFile,
-    InvalidFilename,
-}
+pub struct TransferError;
