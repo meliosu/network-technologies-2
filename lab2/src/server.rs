@@ -29,22 +29,22 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(socket: Socket, addr: SockAddr) -> Self {
+    fn new(socket: Socket, addr: SockAddr) -> Self {
         Self { socket, addr }
     }
 
-    pub fn send<T: Serialize>(&mut self, value: &T) -> io::Result<usize> {
+    fn send<T: Serialize>(&mut self, value: &T) -> io::Result<usize> {
         self.socket
             .write(&serde_binary::to_vec(value, Endian::Big).unwrap())
     }
 
-    pub fn recv<T: DeserializeOwned>(&mut self) -> io::Result<T> {
+    fn recv<T: DeserializeOwned>(&mut self) -> io::Result<T> {
         let mut buffer = [0u8; 8192];
         let read = self.socket.read(&mut buffer)?;
         Ok(serde_binary::from_slice(&buffer[..read], Endian::Big).unwrap())
     }
 
-    pub fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         self.socket.read(buffer)
     }
 

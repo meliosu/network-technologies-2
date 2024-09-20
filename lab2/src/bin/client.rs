@@ -9,7 +9,10 @@ fn main() {
     let mut client = Client::new().unwrap();
 
     client.connect(args.dest).unwrap();
+    println!("Connected to server, transfering {}", args.file);
+
     client.transfer(&args.file).unwrap();
+    println!("Transfer complete!");
 }
 
 mod args {
