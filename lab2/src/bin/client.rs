@@ -1,7 +1,7 @@
 use args::Args;
 use clap::Parser;
 
-use lab2::Client;
+use lab2::client::Client;
 
 fn main() {
     let args = Args::parse();
