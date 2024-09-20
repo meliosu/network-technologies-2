@@ -84,6 +84,12 @@ impl Connection {
 
         while bytes_rcvd < request.len {
             let rcvd = self.read(&mut buffer)?;
+
+            if rcvd == 0 {
+                println!("{} closed connection abruptly", format_sockaddr(&self.addr));
+                return Ok(());
+            }
+
             out.write(&buffer[..rcvd])?;
 
             bytes_rcvd += rcvd as u64;
