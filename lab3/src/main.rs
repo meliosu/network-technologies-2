@@ -14,7 +14,7 @@ use lab3::{
 };
 use serde::{Deserialize, Serialize};
 use shuttle_runtime::SecretStore;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeFile;
 
 //use tokio::net::TcpListener;
 
