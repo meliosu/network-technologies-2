@@ -5,13 +5,13 @@ use serde::Serialize;
 pub struct GeocodingRequest {
     pub key: String,
     pub q: String,
-    pub limit: i32,
+    pub limit: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GeocodingPoint {
-    pub lat: f32,
-    pub lng: f32,
+    pub lat: f64,
+    pub lng: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,15 +53,15 @@ pub struct GeocodingResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WeatherRequest {
-    pub lat: f32,
-    pub lon: f32,
+    pub lat: f64,
+    pub lon: f64,
     pub appid: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Coord {
-    pub lat: f32,
-    pub lon: f32,
+    pub lat: f64,
+    pub lon: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -128,8 +128,8 @@ pub struct WeatherResponse {
 pub struct PlacesRequest {
     pub apikey: String,
     pub radius: f32,
-    pub lon: f32,
-    pub lat: f32,
+    pub lon: f64,
+    pub lat: f64,
     pub format: String,
     pub limit: u32,
 }
