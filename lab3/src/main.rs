@@ -1,94 +1,56 @@
 #![allow(dead_code)]
 
-use std::env;
+use std::fmt::Display;
 
-use reqwest::Client;
-
-use lab3::types::{
-    GeocodingRequest, GeocodingResponse, PlaceInfo, PlaceRequest, PlaceResponse, PlacesRequest,
-    WeatherRequest, WeatherResponse,
+use axum::{
+    extract::{Query, State},
+    response::IntoResponse,
+    routing, Router,
 };
 
+use askama::Template;
+use lab3::{
+    geocoding::GeocodingClient,
+    opentrip::OpentripClient,
+    types::{GeocodingLocation, GeocodingPoint},
+};
+use serde::{Deserialize, Serialize};
+use tokio::net::TcpListener;
+use tower_http::services::ServeFile;
+
+mod tests;
+
 #[tokio::main]
-async fn main() {
-    let client = Client::new();
+async fn main() -> std::io::Result<()> {
+    let listener = TcpListener::bind("localhost:1337").await?;
 
-    test_trips(&client).await.unwrap_or_else(|err| {
-        panic!("error getting weather info: {err}");
-    });
+    let router = Router::new()
+        .nest_service("/", ServeFile::new("assets/index.html"))
+        .route("/search", routing::get(search_locations))
+        .with_state(GeocodingClient::from_env())
+        .with_state(OpentripClient::from_env());
+
+    axum::serve(listener, router.into_make_service()).await
 }
 
-async fn test_trips(client: &Client) -> reqwest::Result<()> {
-    let request = PlacesRequest {
-        apikey: env::var("OPENTRIP_KEY").unwrap(),
-        radius: 10000.0,
-        lat: 54.8618081,
-        lon: 83.0809231,
-        format: "json".into(),
-        limit: 10,
-    };
+async fn search_locations(
+    State(client): State<GeocodingClient>,
+    Query(search): Query<Search>,
+) -> impl IntoResponse {
+    let response = client.fetch_locations(search.name, 10).await.unwrap();
 
-    let response: Vec<PlaceInfo> = client
-        .get("http://api.opentripmap.com/0.1/en/places/radius")
-        .query(&request)
-        .send()
-        .await?
-        .json()
-        .await
-        .unwrap();
-
-    for place in response.into_iter().take(3) {
-        let request = PlaceRequest {
-            apikey: env::var("OPENTRIP_KEY").unwrap(),
-        };
-
-        let response: PlaceResponse = client
-            .get(format!(
-                "http://api.opentripmap.com/0.1/en/places/xid/{}",
-                place.xid
-            ))
-            .query(&request)
-            .send()
-            .await?
-            .json()
-            .await?;
-
-        println!("for xid {} : {response:#?}", place.xid);
+    SearchResults {
+        locations: response.hits,
     }
-
-    Ok(())
 }
 
-async fn test_weather(client: &Client) -> reqwest::Result<WeatherResponse> {
-    let request = WeatherRequest {
-        appid: env::var("OPENWEATHER_KEY").unwrap(),
-        lat: 54.8618081,
-        lon: 83.0809231,
-    };
-
-    let response = client
-        .get("https://api.openweathermap.org/data/2.5/weather")
-        .query(&request)
-        .send()
-        .await?;
-
-    eprintln!("{}", response.text().await?);
-
-    todo!()
+#[derive(Serialize, Deserialize)]
+struct Search {
+    name: String,
 }
 
-async fn test_geocoding(client: &Client) -> reqwest::Result<GeocodingResponse> {
-    let request = GeocodingRequest {
-        key: env::var("GRAPHHOPPER_KEY").unwrap(),
-        q: "Novosibirsk".to_string(),
-        limit: 5,
-    };
-
-    client
-        .get("https://graphhopper.com/api/1/geocode")
-        .query(&request)
-        .send()
-        .await?
-        .json()
-        .await
+#[derive(Template)]
+#[template(path = "search-results.html")]
+struct SearchResults {
+    locations: Vec<GeocodingLocation>,
 }

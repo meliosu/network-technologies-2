@@ -16,31 +16,37 @@ pub struct GeocodingPoint {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GeocodingLocation {
-    point: GeocodingPoint,
-    osm_id: u64,
-    osm_type: String,
-    osm_key: String,
+    pub point: GeocodingPoint,
+    pub osm_id: u64,
+    pub osm_type: String,
+    pub osm_key: String,
 
     #[serde(default)]
-    name: Option<String>,
+    pub name: Option<String>,
 
     #[serde(default)]
-    country: Option<String>,
+    pub country: Option<String>,
 
     #[serde(default)]
-    city: Option<String>,
+    pub city: Option<String>,
 
     #[serde(default)]
-    state: Option<String>,
+    pub state: Option<String>,
 
     #[serde(default)]
-    street: Option<String>,
+    pub street: Option<String>,
 
     #[serde(default)]
-    housenumber: Option<String>,
+    pub housenumber: Option<String>,
 
     #[serde(default)]
-    postcode: Option<String>,
+    pub postcode: Option<String>,
+}
+
+impl std::fmt::Display for GeocodingPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.5}, {:.5}", self.lat, self.lng)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
