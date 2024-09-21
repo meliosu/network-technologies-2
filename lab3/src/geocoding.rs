@@ -11,9 +11,13 @@ pub struct GeocodingClient {
 
 impl GeocodingClient {
     pub fn from_env() -> Self {
+        Self::from_key(env::var("GRAPHHOPPER_KEY").unwrap())
+    }
+
+    pub fn from_key(key: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            key: env::var("GRAPHHOPPER_KEY").unwrap(),
+            key,
         }
     }
 

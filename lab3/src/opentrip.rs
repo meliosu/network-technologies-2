@@ -13,9 +13,13 @@ pub struct OpentripClient {
 
 impl OpentripClient {
     pub fn from_env() -> Self {
+        Self::from_key(env::var("OPENTRIP_KEY").unwrap())
+    }
+
+    pub fn from_key(key: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            key: env::var("OPENTRIP_KEY").unwrap(),
+            key,
         }
     }
 

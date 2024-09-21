@@ -22,11 +22,16 @@ mod tests;
 async fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("localhost:1337").await?;
 
+    let state = AppState {
+        geocoding: GeocodingClient::from_env(),
+        opentrip: OpentripClient::from_env(),
+    };
+
     let router = Router::new()
         .nest_service("/", ServeFile::new("assets/index.html"))
         .route("/search", routing::get(search_locations))
         .route("/places", routing::get(explore_location))
-        .with_state(AppState::from_env());
+        .with_state(state);
 
     axum::serve(listener, router.into_make_service()).await
 }
@@ -81,17 +86,8 @@ struct AppState {
     opentrip: OpentripClient,
 }
 
-impl AppState {
-    pub fn from_env() -> Self {
-        Self {
-            geocoding: GeocodingClient::from_env(),
-            opentrip: OpentripClient::from_env(),
-        }
-    }
-}
-
 #[derive(Template)]
-#[template(path = "places-results.html")]
+#[template(path = "places-results.html", escape = "none")]
 struct PlacesSearchResults {
     places: Vec<PlaceResponse>,
 }
