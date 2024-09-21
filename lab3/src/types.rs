@@ -123,3 +123,47 @@ pub struct WeatherResponse {
     #[serde(default)]
     pub snow: Option<WeatherSnow>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlacesRequest {
+    pub apikey: String,
+    pub radius: f32,
+    pub lon: f32,
+    pub lat: f32,
+    pub format: String,
+    pub limit: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaceRequest {
+    pub apikey: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaceInfo {
+    pub xid: String,
+    pub name: String,
+    pub dist: f32,
+    pub point: Coord,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaceImagePreview {
+    pub source: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaceResponse {
+    pub xid: String,
+    pub name: String,
+    pub rate: String,
+
+    #[serde(default)]
+    pub image: Option<String>,
+
+    #[serde(default)]
+    pub preview: Option<PlaceImagePreview>,
+    pub point: Coord,
+}
