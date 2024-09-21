@@ -49,6 +49,12 @@ impl std::fmt::Display for GeocodingPoint {
     }
 }
 
+impl std::fmt::Display for Coord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.5}, {:.5}", self.lat, self.lon)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GeocodingResponse {
     pub hits: Vec<GeocodingLocation>,
@@ -161,10 +167,18 @@ pub struct PlaceImagePreview {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct PlaceDetails {
+    pub descr: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PlaceResponse {
     pub xid: String,
     pub name: String,
     pub rate: String,
+
+    #[serde(default)]
+    pub info: Option<PlaceDetails>,
 
     #[serde(default)]
     pub image: Option<String>,

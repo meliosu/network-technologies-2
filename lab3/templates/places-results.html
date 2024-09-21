@@ -1,0 +1,17 @@
+<div class="fixed-grid has-1-cols">
+    {% for place in places %}
+    <div class="box">
+        <h4 class="title is-4">
+            {{ place.name }} <span class="has-text-warning">{{ place.rate }}</span>
+        </h4>
+        <h6 class="subtitle is-6">
+            {{ place.point }}
+        </h6>
+        {% if let Some(desc) = self::place_description(place) %}
+        <div class="block">
+            {{ desc }}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>

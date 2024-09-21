@@ -2,15 +2,18 @@
 <div class="cell">
     <div class="box">
         <h3 class="title is-4">
-            {% if let Some(name) = location.name %}
-            {{ name }}
-            {% else %}
-            ???
-            {% endif %}
+            <a hx-get="/places" hx-target="body" hx-push-url="true"
+                hx-vals='{"lat": {{ location.point.lat }}, "lon": {{ location.point.lng }}}'>
+                {% if let Some(name) = location.name %}
+                {{ name }}
+                {% else %}
+                ???
+                {% endif %}
 
-            {% if let Some(country) = location.country %}
-            {{ country }}
-            {% endif %}
+                {% if let Some(country) = location.country %}
+                {{ country }}
+                {% endif %}
+            </a>
         </h3>
 
         <h6 class="subtitle is-6">
