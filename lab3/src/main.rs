@@ -13,27 +13,31 @@ use lab3::{
     types::{Coord, GeocodingLocation, PlaceResponse},
 };
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpListener;
-use tower_http::services::ServeFile;
+use shuttle_runtime::SecretStore;
+use tower_http::services::{ServeDir, ServeFile};
+
+//use tokio::net::TcpListener;
 
 mod tests;
 
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("localhost:1337").await?;
+#[shuttle_runtime::main]
+async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum::ShuttleAxum {
+    //let listener = TcpListener::bind("localhost:1337").await?;
 
     let state = AppState {
-        geocoding: GeocodingClient::from_env(),
-        opentrip: OpentripClient::from_env(),
+        geocoding: GeocodingClient::from_key(secrets.get("GRAPHHOPPER_KEY").unwrap()),
+        opentrip: OpentripClient::from_key(secrets.get("OPENTRIP_KEY").unwrap()),
     };
 
     let router = Router::new()
         .nest_service("/", ServeFile::new("assets/index.html"))
+        .nest_service("/favicon.ico", ServeFile::new("assets/favicon.ico"))
         .route("/search", routing::get(search_locations))
         .route("/places", routing::get(explore_location))
         .with_state(state);
 
-    axum::serve(listener, router.into_make_service()).await
+    //axum::serve(listener, router.into_make_service()).await
+    Ok(router.into())
 }
 
 async fn search_locations(
