@@ -4,9 +4,17 @@
         <h4 class="title is-4">
             {{ place.name }} <span class="has-text-warning">{{ place.rate }}</span>
         </h4>
+
         <h6 class="subtitle is-6">
             {{ place.point }}
         </h6>
+
+        {% if let Some(wiki) = place.wikipedia %}
+        <div class="block">
+            <a href="{{ wiki }}">Wikipedia Article</a>
+        </div>
+        {% endif %}
+
         {% if let Some(desc) = self::place_description(place) %}
         <div class="block">
             {{ desc }}

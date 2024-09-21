@@ -5,12 +5,12 @@
             <a hx-get="/places" hx-target="body" hx-push-url="true"
                 hx-vals='{"lat": {{ location.point.lat }}, "lon": {{ location.point.lng }}}'>
                 {% if let Some(name) = location.name %}
-                {{ name }}
+                {{ name }},
                 {% else %}
-                ???
+                ???,
                 {% endif %}
 
-                {% if let Some(country) = location.country %}
+                {%- if let Some(country) = location.country -%}
                 {{ country }}
                 {% endif %}
             </a>

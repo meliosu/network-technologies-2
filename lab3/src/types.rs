@@ -185,5 +185,8 @@ pub struct PlaceResponse {
 
     #[serde(default)]
     pub preview: Option<PlaceImagePreview>,
+
+    #[serde(default)]
+    pub wikipedia: Option<String>,
     pub point: Coord,
 }

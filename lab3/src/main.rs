@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use std::sync::Arc;
-
 use axum::{
     extract::{FromRef, Query, State},
     response::IntoResponse,
@@ -12,10 +10,10 @@ use askama::Template;
 use lab3::{
     geocoding::GeocodingClient,
     opentrip::OpentripClient,
-    types::{Coord, GeocodingLocation, GeocodingPoint, PlaceResponse},
+    types::{Coord, GeocodingLocation, PlaceResponse},
 };
 use serde::{Deserialize, Serialize};
-use tokio::{net::TcpListener, task::JoinSet};
+use tokio::net::TcpListener;
 use tower_http::services::ServeFile;
 
 mod tests;
