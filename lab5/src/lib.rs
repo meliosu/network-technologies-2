@@ -2,14 +2,14 @@
 
 use std::{
     collections::HashMap,
-    io::{self, Read, Write},
+    io::{self},
     net::{Ipv4Addr, SocketAddrV4},
     os::fd::{AsFd, AsRawFd},
-    rc::Rc,
 };
 
 use nix::poll::{PollFd, PollFlags, PollTimeout};
 use socket2::{Protocol, Socket, Type};
+use types::{ConnectionRequest, GreetingRequest, GreetingResponse};
 
 pub mod types;
 
@@ -18,7 +18,7 @@ pub struct Server {
     dns: Socket,
     queries: Vec<String>,
     answers: Vec<(String, Ipv4Addr)>,
-    clients: Vec<Rc<Client>>,
+    clients: HashMap<i32, Client>,
 }
 
 impl Server {
@@ -38,12 +38,12 @@ impl Server {
             dns,
             queries: Vec::new(),
             answers: Vec::new(),
-            clients: Vec::new(),
+            clients: HashMap::new(),
         })
     }
 
-    pub fn recv_dns(&mut self) -> io::Result<(String, Ipv4Addr)> {
-        let mut buffer = [0u8; 4096];
+    fn recv_dns(&mut self) -> io::Result<(String, Ipv4Addr)> {
+        let mut buffer = [0u8; 16384];
 
         let received = self.dns.read(&mut buffer)?;
 
@@ -63,84 +63,194 @@ impl Server {
         Ok((domain, ip))
     }
 
-    pub fn send_dns(&mut self, domain: &str) -> io::Result<()> {
+    fn send_dns(&mut self, domain: &str) -> io::Result<()> {
         let mut message = rustdns::Message::default();
 
         message.add_question(domain, rustdns::Type::A, rustdns::Class::Internet);
 
-        self.dns.write(&message.to_vec()?)?;
+        self.dns.write(&message.to_vec()?).map(|_| ())
+    }
 
-        Ok(())
+    fn setup_pollfds(&mut self) -> Vec<PollFd> {
+        let mut pollfds = Vec::new();
+
+        pollfds.push(PollFd::new(self.this.as_fd(), PollFlags::POLLIN));
+
+        let dns_events = if self.queries.is_empty() {
+            PollFlags::POLLIN
+        } else {
+            PollFlags::POLLIN | PollFlags::POLLOUT
+        };
+
+        pollfds.push(PollFd::new(self.dns.as_fd(), dns_events));
+
+        for (_, client) in &self.clients {
+            let events = match client.state {
+                ClientState::AwaitingGreeting => PollFlags::POLLIN,
+                ClientState::AwaitingGreetingResponse { .. } => PollFlags::POLLOUT,
+                ClientState::AwaitingConnection => PollFlags::POLLIN,
+                ClientState::AwaitingDNS { .. } => PollFlags::empty(),
+                ClientState::AwaitingConnectionResponse { .. } => PollFlags::POLLOUT,
+                ClientState::Connected { .. } => PollFlags::POLLIN | PollFlags::POLLOUT,
+            };
+
+            pollfds.push(PollFd::new(client.socket.as_fd(), events));
+
+            match &client.state {
+                ClientState::Connected { destination } => pollfds.push(PollFd::new(
+                    destination.as_fd(),
+                    PollFlags::POLLIN | PollFlags::POLLOUT,
+                )),
+
+                _ => {}
+            }
+        }
+
+        pollfds
     }
 
     pub fn run(&mut self) -> io::Result<()> {
+        let mut buffer = [0u8; 16384];
+
         loop {
-            let mut pollfds = Vec::new();
-            let mut map: HashMap<i32, Rc<Client>> = HashMap::new();
-
-            pollfds.push(PollFd::new(self.this.as_fd(), PollFlags::POLLIN));
-            pollfds.push(PollFd::new(
-                self.dns.as_fd(),
-                PollFlags::POLLIN | PollFlags::POLLOUT,
-            ));
-
-            for client in &self.clients {
-                let events = match client.state {
-                    ClientState::AwaitingGreeting => PollFlags::POLLIN,
-                    ClientState::AwaitingGreetingResponse => PollFlags::POLLOUT,
-                    ClientState::AwaitingConnection => PollFlags::POLLIN,
-                    ClientState::AwaitingDNS { .. } => PollFlags::empty(),
-                    ClientState::AwaitingConnectionResponse => PollFlags::POLLOUT,
-                    ClientState::Connected { .. } => PollFlags::POLLIN | PollFlags::POLLOUT,
-                };
-
-                pollfds.push(PollFd::new(client.socket.as_fd(), events));
-
-                match &client.state {
-                    ClientState::Connected { destination } => pollfds.push(PollFd::new(
-                        destination.as_fd(),
-                        PollFlags::POLLIN | PollFlags::POLLOUT,
-                    )),
-
-                    _ => {}
-                }
-            }
+            let mut pollfds = self.setup_pollfds();
 
             nix::poll::poll(&mut pollfds, PollTimeout::NONE)?;
 
             let pollfds: Vec<_> = pollfds
                 .into_iter()
-                .map(|pollfd| (pollfd.as_fd().as_raw_fd(), pollfd.revents()))
+                .filter_map(|pollfd| {
+                    if let Some(revents) = pollfd.revents() {
+                        Some((pollfd.as_fd().as_raw_fd(), revents))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
 
-            for (i, (fd, revents)) in pollfds.into_iter().enumerate() {
-                if i == 0 {
-                    if let Some(revents) = revents {
-                        if revents.contains(PollFlags::POLLIN) {
-                            let (conn, _) = self.this.accept()?;
+            let [(_, server_revents), (_, dns_revents), others @ ..] = &pollfds[..] else {
+                unreachable!();
+            };
 
-                            let client = Rc::new(Client {
-                                socket: conn,
-                                state: ClientState::AwaitingGreeting,
-                            });
+            if server_revents.contains(PollFlags::POLLIN) {
+                let (conn, _) = self.this.accept()?;
 
-                            self.clients.push(client);
-                        }
-                    }
+                let client = Client {
+                    socket: conn,
+                    state: ClientState::AwaitingGreeting,
+                };
+
+                self.clients.insert(client.socket.as_raw_fd(), client);
+            }
+
+            if dns_revents.contains(PollFlags::POLLIN) {
+                let answer = self.recv_dns()?;
+                self.answers.push(answer);
+            }
+
+            if dns_revents.contains(PollFlags::POLLOUT) {
+                if let Some(query) = self.queries.pop() {
+                    self.send_dns(&query)?;
                 }
+            }
 
-                if i == 1 {
-                    if let Some(revents) = revents {
-                        if revents.contains(PollFlags::POLLIN) {
-                            let answer = self.recv_dns()?;
-                            self.answers.push(answer);
-                        }
+            for (fd, revents) in others {
+                if let Some(ref mut client) = self.clients.get_mut(fd) {
+                    match &client.state {
+                        ClientState::AwaitingGreeting => {
+                            if revents.contains(PollFlags::POLLIN) {
+                                let n = client.socket.read(&mut buffer)?;
 
-                        if revents.contains(PollFlags::POLLOUT) {
-                            if let Some(query) = self.queries.pop() {
-                                self.send_dns(&query)?;
+                                let Some(greeting_request) =
+                                    GreetingRequest::from_bytes(&buffer[..n])
+                                else {
+                                    panic!("invalid greeting request");
+                                };
+
+                                if revents.contains(PollFlags::POLLOUT) {
+                                    if greeting_request.auths.contains(&0x0) {
+                                        let greeting_response = GreetingResponse {
+                                            version: 0x5,
+                                            auth: 0x0,
+                                        };
+
+                                        client.socket.write(&greeting_response.to_bytes())?;
+                                    } else {
+                                        let greeting_response = GreetingResponse {
+                                            version: 0x5,
+                                            auth: 0xFF,
+                                        };
+
+                                        client.socket.write(&greeting_response.to_bytes())?;
+
+                                        // TODO: close client connection
+                                    }
+
+                                    client.state = ClientState::AwaitingConnection;
+                                } else {
+                                    client.state = ClientState::AwaitingGreetingResponse {
+                                        request: greeting_request,
+                                    };
+                                }
                             }
                         }
+
+                        ClientState::AwaitingGreetingResponse { request } => {
+                            if revents.contains(PollFlags::POLLOUT) {
+                                if request.auths.contains(&0x0) {
+                                    let greeting_response = GreetingResponse {
+                                        version: 0x5,
+                                        auth: 0x0,
+                                    };
+
+                                    client.socket.write(&greeting_response.to_bytes())?;
+                                } else {
+                                    let greeting_response = GreetingResponse {
+                                        version: 0x5,
+                                        auth: 0xFF,
+                                    };
+
+                                    client.socket.write(&greeting_response.to_bytes())?;
+
+                                    // TODO: close client connection
+                                }
+                            }
+                        }
+
+                        ClientState::AwaitingConnection => {
+                            if revents.contains(PollFlags::POLLIN) {
+                                let n = client.socket.read(&mut buffer)?;
+
+                                let Some(connection_request) =
+                                    ConnectionRequest::from_bytes(&buffer[..n])
+                                else {
+                                    panic!("invalid connection request");
+                                };
+
+                                if revents.contains(PollFlags::POLLOUT) {
+                                } else {
+                                    client.state = ClientState::AwaitingConnectionResponse {
+                                        request: connection_request,
+                                    };
+                                }
+                            }
+                        }
+
+                        ClientState::AwaitingDNS { domain } => {
+                            if let Some(idx) =
+                                self.answers.iter().position(|(name, _)| name == domain)
+                            {
+                                let (_, ip) = self.answers.remove(idx);
+
+                                todo!()
+                            }
+                        }
+
+                        ClientState::AwaitingConnectionResponse { request } => {
+                            if revents.contains(PollFlags::POLLOUT) {}
+                        }
+
+                        ClientState::Connected { destination } => {}
                     }
                 }
             }
@@ -150,14 +260,29 @@ impl Server {
 
 pub enum ClientState {
     AwaitingGreeting,
-    AwaitingGreetingResponse,
+    AwaitingGreetingResponse { request: GreetingRequest },
     AwaitingConnection,
     AwaitingDNS { domain: String },
-    AwaitingConnectionResponse,
+    AwaitingConnectionResponse { request: ConnectionRequest },
     Connected { destination: Socket },
 }
 
 pub struct Client {
     socket: Socket,
     state: ClientState,
+}
+
+pub trait SocketExt {
+    fn read(&self, buffer: &mut [u8]) -> io::Result<usize>;
+    fn write(&self, buffer: &[u8]) -> io::Result<usize>;
+}
+
+impl SocketExt for socket2::Socket {
+    fn read(&self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.recv(unsafe { std::mem::transmute(buffer) })
+    }
+
+    fn write(&self, buffer: &[u8]) -> io::Result<usize> {
+        self.send(buffer)
+    }
 }
