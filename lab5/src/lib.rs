@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     io::{self},
     net::{Ipv4Addr, SocketAddrV4},
-    os::fd::{AsFd, AsRawFd, FromRawFd},
+    os::fd::{AsFd, AsRawFd},
 };
 
 use nix::poll::{PollFd, PollFlags, PollTimeout};
@@ -19,17 +19,17 @@ pub struct Server {
     queries: Vec<String>,
     answers: Vec<(String, Ipv4Addr)>,
     clients: HashMap<i32, Client>,
-    servers: HashMap<i32, i32>,
+    buffer: Vec<u8>,
 }
 
 impl Server {
     pub fn new(port: u16) -> io::Result<Self> {
-        let this = Socket::new(socket2::Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
+        let this = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
         this.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port).into())?;
         this.listen(16)?;
         this.set_nonblocking(true)?;
 
-        let dns = Socket::new(socket2::Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+        let dns = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
         dns.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into())?;
         dns.connect(&SocketAddrV4::new(Ipv4Addr::new(8, 8, 8, 8), 53).into())?;
         dns.set_nonblocking(true)?;
@@ -40,19 +40,15 @@ impl Server {
             queries: Vec::new(),
             answers: Vec::new(),
             clients: HashMap::new(),
-            servers: HashMap::new(),
+            buffer: vec![0u8; 16384],
         })
     }
 
+    // TODO: refactor
     fn recv_dns(&mut self) -> io::Result<()> {
-        let mut buffer = [0u8; 16384];
-
-        let received = self.dns.read(&mut buffer)?;
-
-        let message = rustdns::Message::from_slice(&buffer[..received])?;
-
+        let received = self.dns.read(&mut self.buffer)?;
+        let message = rustdns::Message::from_slice(&self.buffer[..received])?;
         let rustdns::Message { answers, .. } = message;
-
         self.answers
             .extend(answers.into_iter().filter_map(|a| match a.resource {
                 rustdns::Resource::A(ip) => {
@@ -66,10 +62,149 @@ impl Server {
 
     fn send_dns(&mut self, domain: &str) -> io::Result<()> {
         let mut message = rustdns::Message::default();
-
         message.add_question(domain, rustdns::Type::A, rustdns::Class::Internet);
-
         self.dns.write(&message.to_vec()?).map(|_| ())
+    }
+
+    fn transition_client(
+        &mut self,
+        client: Client,
+        revents: PollFlags,
+    ) -> io::Result<Option<Client>> {
+        let state = match client.state {
+            ClientState::AwaitingGreeting if revents.contains(PollFlags::POLLIN) => {
+                let n = client.socket.read(&mut self.buffer)?;
+
+                if n != 0 {
+                    let Some(greeting_request) = GreetingRequest::from_bytes(&self.buffer[..n])
+                    else {
+                        return Ok(None);
+                    };
+
+                    Some(ClientState::AwaitingGreetingResponse {
+                        request: greeting_request,
+                    })
+                } else {
+                    eprintln!("read 0 bytes while in greeting");
+                    None
+                }
+            }
+
+            ClientState::AwaitingGreetingResponse { request }
+                if revents.contains(PollFlags::POLLOUT) =>
+            {
+                if request.auths.contains(&0x0) {
+                    let greeting_response = GreetingResponse {
+                        version: 0x5,
+                        auth: 0x0,
+                    };
+
+                    client.socket.write(&greeting_response.to_bytes())?;
+
+                    Some(ClientState::AwaitingConnection)
+                } else {
+                    let greeting_response = GreetingResponse {
+                        version: 0x5,
+                        auth: 0xFF,
+                    };
+
+                    client.socket.write(&greeting_response.to_bytes())?;
+
+                    None
+                }
+            }
+
+            ClientState::AwaitingConnection if revents.contains(PollFlags::POLLIN) => {
+                let n = client.socket.read(&mut self.buffer)?;
+
+                let Some(connection_request) = ConnectionRequest::from_bytes(&self.buffer[..n])
+                else {
+                    return Ok(None);
+                };
+
+                match &connection_request.destination {
+                    Address::IPv4(ipv4) => {
+                        let destination = Self::connect_to(&ipv4)?;
+
+                        Some(ClientState::Connected { destination })
+                    }
+
+                    Address::Domain(domain) => {
+                        self.queries.push(domain.to_string());
+
+                        Some(ClientState::AwaitingDNS {
+                            domain: domain.to_string(),
+                        })
+                    }
+
+                    Address::IPv6(_) => {
+                        eprintln!("IPv6 unsupported");
+                        None
+                    }
+                }
+            }
+
+            ClientState::AwaitingDNS { domain } => {
+                if let Some(ip) = self
+                    .answers
+                    .iter()
+                    .filter_map(|(name, ip)| (*name == domain).then_some(ip))
+                    .next()
+                {
+                    let destination = Self::connect_to(&ip)?;
+                    Some(ClientState::AwaitingConnectionResponse { destination })
+                } else {
+                    Some(ClientState::AwaitingDNS { domain })
+                }
+            }
+
+            ClientState::AwaitingConnectionResponse { destination }
+                if revents.contains(PollFlags::POLLOUT) =>
+            {
+                let addr = destination.peer_addr()?;
+
+                let Some(ipv4) = addr.as_socket_ipv4() else {
+                    return Ok(None);
+                };
+
+                let address = Address::IPv4(ipv4.ip().clone());
+
+                let connection_response = ConnectionResponse {
+                    version: 0x5,
+                    status: 0x00,
+                    bind_address: address,
+                    bind_port: ipv4.port(),
+                };
+
+                client.socket.write(&connection_response.to_bytes())?;
+
+                Some(ClientState::Connected { destination })
+            }
+
+            ClientState::Connected { destination } => {
+                if revents.contains(PollFlags::POLLIN) {
+                    let n = client.socket.read(&mut self.buffer)?;
+                    if n == 0 {
+                        return Ok(None);
+                    }
+
+                    destination.write(&self.buffer[..n])?;
+                }
+
+                Some(ClientState::Connected { destination })
+            }
+
+            _ => Some(client.state),
+        };
+
+        if let Some(state) = state {
+            Ok(Some(Client {
+                socket: client.socket,
+                state,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     fn setup_pollfds(&mut self) -> Vec<PollFd> {
@@ -98,14 +233,9 @@ impl Server {
             pollfds.push(PollFd::new(client.socket.as_fd(), events));
 
             match &client.state {
-                ClientState::Connected { destination } => pollfds.push(PollFd::new(
-                    destination.as_fd(),
-                    PollFlags::POLLIN | PollFlags::POLLOUT,
-                )),
-
-                ClientState::AwaitingConnectionResponse { destination } => pollfds.push(
-                    PollFd::new(destination.as_fd(), PollFlags::POLLIN | PollFlags::POLLOUT),
-                ),
+                ClientState::Connected { destination } => {
+                    pollfds.push(PollFd::new(destination.as_fd(), PollFlags::POLLIN))
+                }
 
                 _ => {}
             }
@@ -116,20 +246,21 @@ impl Server {
 
     pub fn connect_to(ip: &Ipv4Addr) -> io::Result<Socket> {
         let destination = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
-
         destination.connect(&SocketAddrV4::new(*ip, 443).into())?;
         destination.set_nonblocking(true)?;
-
         Ok(destination)
     }
 
     pub fn run(&mut self) -> io::Result<()> {
-        let mut buffer = [0u8; 16384];
-
         loop {
             let mut pollfds = self.setup_pollfds();
 
             nix::poll::poll(&mut pollfds, PollTimeout::NONE)?;
+
+            eprintln!(
+                "{}",
+                pollfds.iter().filter(|fd| fd.events().is_empty()).count()
+            );
 
             let pollfds: Vec<_> = pollfds
                 .into_iter()
@@ -169,172 +300,33 @@ impl Server {
 
             for (fd, revents) in others {
                 if revents.intersects(PollFlags::POLLHUP | PollFlags::POLLERR) {
-                    if let Some(client) = self.clients.remove(fd) {
-                        match client.state {
-                            ClientState::Connected { destination } => {
-                                self.servers.remove(&destination.as_raw_fd());
-                            }
-
-                            ClientState::AwaitingConnectionResponse { destination } => {
-                                self.servers.remove(&destination.as_raw_fd());
-                            }
-
-                            _ => {}
-                        }
-                    }
-
+                    self.clients.remove(fd);
                     continue;
                 }
 
-                // TODO: make this fucking monstrosity sane
-                if let Some(client_fd) = self.servers.get(fd) {
+                if let Some(client) = self.clients.remove(fd) {
+                    if let Some(next) = self.transition_client(client, *revents)? {
+                        self.clients.insert(*fd, next);
+                    }
+                } else if let Some((server, client)) =
+                    self.clients.values().find_map(|client| match client.state {
+                        ClientState::Connected { ref destination }
+                            if destination.as_raw_fd() == *fd =>
+                        {
+                            Some((destination, &client.socket))
+                        }
+                        _ => None,
+                    })
+                {
                     if revents.contains(PollFlags::POLLIN) {
-                        let server_socket = unsafe { Socket::from_raw_fd(*fd) };
-                        let client_socket = unsafe { Socket::from_raw_fd(*client_fd) };
+                        let n = server.read(&mut self.buffer)?;
 
-                        let n = server_socket.read(&mut buffer)?;
-                        client_socket.write(&buffer[..n])?;
-
-                        std::mem::forget(server_socket);
-                        std::mem::forget(client_socket);
-                    }
-
-                    continue;
-                }
-
-                if let Some(ref mut client) = self.clients.get_mut(fd) {
-                    match std::mem::take(&mut client.state) {
-                        ClientState::AwaitingGreeting => {
-                            if revents.contains(PollFlags::POLLIN) {
-                                let n = client.socket.read(&mut buffer)?;
-
-                                if n == 0 {
-                                    eprintln!("read 0 bytes while in greeting");
-                                    continue;
-                                }
-
-                                let Some(greeting_request) =
-                                    GreetingRequest::from_bytes(&buffer[..n])
-                                else {
-                                    panic!("invalid greeting request");
-                                };
-
-                                client.state = ClientState::AwaitingGreetingResponse {
-                                    request: greeting_request,
-                                };
-                            }
+                        if n == 0 {
+                            self.clients.remove(&client.as_raw_fd());
+                            continue;
                         }
 
-                        ClientState::AwaitingGreetingResponse { request } => {
-                            if revents.contains(PollFlags::POLLOUT) {
-                                if request.auths.contains(&0x0) {
-                                    let greeting_response = GreetingResponse {
-                                        version: 0x5,
-                                        auth: 0x0,
-                                    };
-
-                                    client.socket.write(&greeting_response.to_bytes())?;
-
-                                    client.state = ClientState::AwaitingConnection;
-                                } else {
-                                    let greeting_response = GreetingResponse {
-                                        version: 0x5,
-                                        auth: 0xFF,
-                                    };
-
-                                    client.socket.write(&greeting_response.to_bytes())?;
-                                    // TODO: close client connection
-                                    client.state = ClientState::AwaitingConnection;
-                                }
-                            }
-                        }
-
-                        ClientState::AwaitingConnection => {
-                            if revents.contains(PollFlags::POLLIN) {
-                                let n = client.socket.read(&mut buffer)?;
-
-                                let Some(connection_request) =
-                                    ConnectionRequest::from_bytes(&buffer[..n])
-                                else {
-                                    panic!("invalid connection request");
-                                };
-
-                                match &connection_request.destination {
-                                    Address::IPv4(ipv4) => {
-                                        let destination = Self::connect_to(&ipv4)?;
-
-                                        self.servers.insert(
-                                            destination.as_raw_fd(),
-                                            client.socket.as_raw_fd(),
-                                        );
-
-                                        client.state = ClientState::Connected { destination };
-                                    }
-
-                                    Address::IPv6(_) => {
-                                        panic!("ipv6 unsupported");
-                                    }
-
-                                    Address::Domain(domain) => {
-                                        self.queries.push(domain.to_string());
-
-                                        client.state = ClientState::AwaitingDNS {
-                                            domain: domain.to_string(),
-                                        };
-                                    }
-                                }
-                            }
-                        }
-
-                        ClientState::AwaitingDNS { domain } => {
-                            if let Some(ip) = self
-                                .answers
-                                .iter()
-                                .filter_map(|(name, ip)| (*name == domain).then_some(ip))
-                                .next()
-                            {
-                                let destination = Self::connect_to(&ip)?;
-
-                                self.servers
-                                    .insert(destination.as_raw_fd(), client.socket.as_raw_fd());
-
-                                client.state =
-                                    ClientState::AwaitingConnectionResponse { destination };
-                            }
-                        }
-
-                        ClientState::AwaitingConnectionResponse { destination } => {
-                            if revents.contains(PollFlags::POLLOUT) {
-                                let addr = destination.peer_addr()?;
-
-                                let Some(ipv4) = addr.as_socket_ipv4() else {
-                                    panic!("non-ipv4 not implemented");
-                                };
-
-                                let address = Address::IPv4(ipv4.ip().clone());
-
-                                let connection_response = ConnectionResponse {
-                                    version: 0x5,
-                                    status: 0x00,
-                                    bind_address: address,
-                                    bind_port: ipv4.port(),
-                                };
-
-                                client.socket.write(&connection_response.to_bytes())?;
-                                client.state = ClientState::Connected { destination };
-                            }
-                        }
-
-                        ClientState::Connected { destination } => {
-                            if revents.contains(PollFlags::POLLIN) {
-                                // TODO: ensure server has POLLOUT
-
-                                let n = client.socket.read(&mut buffer)?;
-                                destination.write(&buffer[..n])?;
-
-                                client.state = ClientState::Connected { destination };
-                            }
-                        }
+                        client.write(&self.buffer[..n])?;
                     }
                 }
             }
@@ -342,26 +334,13 @@ impl Server {
     }
 }
 
-#[derive(Default)]
 pub enum ClientState {
-    #[default]
     AwaitingGreeting,
-    AwaitingGreetingResponse {
-        request: GreetingRequest,
-    },
-
+    AwaitingGreetingResponse { request: GreetingRequest },
     AwaitingConnection,
-    AwaitingDNS {
-        domain: String,
-    },
-
-    AwaitingConnectionResponse {
-        destination: Socket,
-    },
-
-    Connected {
-        destination: Socket,
-    },
+    AwaitingDNS { domain: String },
+    AwaitingConnectionResponse { destination: Socket },
+    Connected { destination: Socket },
 }
 
 pub struct Client {
