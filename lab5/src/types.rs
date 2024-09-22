@@ -1,5 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+#[derive(Debug)]
 pub struct GreetingRequest {
     pub version: u8,
     pub auths: Vec<u8>,
@@ -12,7 +13,7 @@ impl GreetingRequest {
         };
 
         if *nauths as usize != auths.len() {
-            return None;
+            eprintln!("len != len");
         }
 
         Some(Self {
@@ -22,6 +23,7 @@ impl GreetingRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct GreetingResponse {
     pub version: u8,
     pub auth: u8,
@@ -33,7 +35,7 @@ impl GreetingResponse {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Address {
     IPv4(Ipv4Addr),
     IPv6(Ipv6Addr),
@@ -48,7 +50,7 @@ impl Address {
                 addr.try_into().unwrap(),
             )))),
 
-            [0x3, addr @ ..] => Some(Self::Domain(String::from_utf8(addr.to_vec()).unwrap())),
+            [0x3, _len, addr @ ..] => Some(Self::Domain(String::from_utf8(addr.to_vec()).unwrap())),
 
             [0x4, addr @ ..] => Some(Self::IPv6(Ipv6Addr::from_bits(u128::from_be_bytes(
                 addr.try_into().unwrap(),
@@ -61,13 +63,13 @@ impl Address {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             Self::IPv4(addr) => [&[0x1], &addr.to_bits().to_be_bytes()[..]].concat(),
-            Self::Domain(addr) => [&[0x3], addr.as_bytes()].concat(),
+            Self::Domain(addr) => [&[0x3], &[addr.len() as u8], addr.as_bytes()].concat(),
             Self::IPv6(addr) => [&[0x4], &addr.to_bits().to_be_bytes()[..]].concat(),
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ConnectionRequest {
     pub version: u8,
     pub command: u8,
@@ -92,6 +94,7 @@ impl ConnectionRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct ConnectionResponse {
     pub version: u8,
     pub status: u8,
