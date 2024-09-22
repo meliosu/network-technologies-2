@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{self},
     net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroUsize,
-    os::fd::{AsFd, AsRawFd},
+    os::fd::{AsFd, AsRawFd, FromRawFd},
 };
 
 use nix::poll::{PollFd, PollFlags, PollTimeout};
@@ -20,6 +20,7 @@ pub struct Server {
     queries: Vec<String>,
     answers: Vec<(String, Ipv4Addr)>,
     clients: HashMap<i32, Client>,
+    servers: HashMap<i32, i32>,
 }
 
 impl Server {
@@ -40,6 +41,7 @@ impl Server {
             queries: Vec::new(),
             answers: Vec::new(),
             clients: HashMap::new(),
+            servers: HashMap::new(),
         })
     }
 
@@ -165,6 +167,41 @@ impl Server {
             }
 
             for (fd, revents) in others {
+                if revents.intersects(PollFlags::POLLHUP | PollFlags::POLLERR) {
+                    if let Some(client) = self.clients.remove(fd) {
+                        match client.state {
+                            ClientState::Connected { destination } => {
+                                self.servers.remove(&destination.as_raw_fd());
+                            }
+
+                            ClientState::AwaitingConnectionResponse { destination } => {
+                                self.servers.remove(&destination.as_raw_fd());
+                            }
+
+                            _ => {}
+                        }
+                    }
+                }
+
+                // TODO: make this fucking monstrosity sane
+                if let Some(client_fd) = self.servers.get(fd) {
+                    if revents.contains(PollFlags::POLLIN) {
+                        let server_socket = unsafe { Socket::from_raw_fd(*fd) };
+                        let client_socket = unsafe { Socket::from_raw_fd(*client_fd) };
+
+                        server_socket.sendfile(
+                            &client_socket.as_raw_fd(),
+                            0,
+                            Some(NonZeroUsize::new(16384).unwrap()),
+                        )?;
+
+                        std::mem::forget(server_socket);
+                        std::mem::forget(client_socket);
+                    }
+
+                    continue;
+                }
+
                 if let Some(ref mut client) = self.clients.get_mut(fd) {
                     match std::mem::take(&mut client.state) {
                         ClientState::AwaitingGreeting => {
