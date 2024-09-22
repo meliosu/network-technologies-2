@@ -51,8 +51,8 @@ impl Address {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             Self::IPv4(addr) => [&[0x1], &addr.to_be_bytes()[..]].concat(),
-            Self::IPv6(addr) => [&[0x3], &addr[..]].concat(),
-            Self::Domain(addr) => [&[0x4], &addr[..]].concat(),
+            Self::Domain(addr) => [&[0x3], &addr[..]].concat(),
+            Self::IPv6(addr) => [&[0x4], &addr[..]].concat(),
         }
     }
 }
