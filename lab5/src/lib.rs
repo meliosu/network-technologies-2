@@ -4,12 +4,13 @@ use std::{
     collections::HashMap,
     io::{self},
     net::{Ipv4Addr, SocketAddrV4},
+    num::NonZeroUsize,
     os::fd::{AsFd, AsRawFd},
 };
 
 use nix::poll::{PollFd, PollFlags, PollTimeout};
-use socket2::{Protocol, Socket, Type};
-use types::{ConnectionRequest, GreetingRequest, GreetingResponse};
+use socket2::{Domain, Protocol, Socket, Type};
+use types::{Address, ConnectionRequest, ConnectionResponse, GreetingRequest, GreetingResponse};
 
 pub mod types;
 
@@ -109,6 +110,15 @@ impl Server {
         pollfds
     }
 
+    pub fn connect_to(ip: &Ipv4Addr) -> io::Result<Socket> {
+        let destination = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
+
+        destination.connect(&SocketAddrV4::new(*ip, 0).into())?;
+        destination.set_nonblocking(true)?;
+
+        Ok(destination)
+    }
+
     pub fn run(&mut self) -> io::Result<()> {
         let mut buffer = [0u8; 16384];
 
@@ -156,7 +166,7 @@ impl Server {
 
             for (fd, revents) in others {
                 if let Some(ref mut client) = self.clients.get_mut(fd) {
-                    match &client.state {
+                    match std::mem::take(&mut client.state) {
                         ClientState::AwaitingGreeting => {
                             if revents.contains(PollFlags::POLLIN) {
                                 let n = client.socket.read(&mut buffer)?;
@@ -167,31 +177,9 @@ impl Server {
                                     panic!("invalid greeting request");
                                 };
 
-                                if revents.contains(PollFlags::POLLOUT) {
-                                    if greeting_request.auths.contains(&0x0) {
-                                        let greeting_response = GreetingResponse {
-                                            version: 0x5,
-                                            auth: 0x0,
-                                        };
-
-                                        client.socket.write(&greeting_response.to_bytes())?;
-                                    } else {
-                                        let greeting_response = GreetingResponse {
-                                            version: 0x5,
-                                            auth: 0xFF,
-                                        };
-
-                                        client.socket.write(&greeting_response.to_bytes())?;
-
-                                        // TODO: close client connection
-                                    }
-
-                                    client.state = ClientState::AwaitingConnection;
-                                } else {
-                                    client.state = ClientState::AwaitingGreetingResponse {
-                                        request: greeting_request,
-                                    };
-                                }
+                                client.state = ClientState::AwaitingGreetingResponse {
+                                    request: greeting_request,
+                                };
                             }
                         }
 
@@ -227,30 +215,71 @@ impl Server {
                                     panic!("invalid connection request");
                                 };
 
-                                if revents.contains(PollFlags::POLLOUT) {
-                                } else {
-                                    client.state = ClientState::AwaitingConnectionResponse {
-                                        request: connection_request,
-                                    };
+                                match &connection_request.destination {
+                                    Address::IPv4(ipv4) => {
+                                        let destination = Self::connect_to(&ipv4)?;
+                                        client.state = ClientState::Connected { destination };
+                                    }
+
+                                    Address::IPv6(_) => {
+                                        panic!("ipv6 unsupported");
+                                    }
+
+                                    Address::Domain(domain) => {
+                                        client.state = ClientState::AwaitingDNS {
+                                            domain: domain.to_string(),
+                                        };
+                                    }
                                 }
                             }
                         }
 
                         ClientState::AwaitingDNS { domain } => {
-                            if let Some(idx) =
-                                self.answers.iter().position(|(name, _)| name == domain)
+                            if let Some(ip) = self
+                                .answers
+                                .iter()
+                                .filter_map(|(name, ip)| (*name == domain).then_some(ip))
+                                .next()
                             {
-                                let (_, ip) = self.answers.remove(idx);
+                                let destination = Self::connect_to(&ip)?;
 
-                                todo!()
+                                client.state =
+                                    ClientState::AwaitingConnectionResponse { destination };
                             }
                         }
 
-                        ClientState::AwaitingConnectionResponse { request } => {
-                            if revents.contains(PollFlags::POLLOUT) {}
+                        ClientState::AwaitingConnectionResponse { destination } => {
+                            if revents.contains(PollFlags::POLLOUT) {
+                                let addr = destination.peer_addr()?;
+
+                                let Some(ipv4) = addr.as_socket_ipv4() else {
+                                    panic!("non-ipv4 not implemented");
+                                };
+
+                                let address = Address::IPv4(ipv4.ip().clone());
+
+                                let connection_response = ConnectionResponse {
+                                    version: 0x5,
+                                    status: 0x00, // TODO: handle failures
+                                    bind_address: address,
+                                    bind_port: ipv4.port(),
+                                };
+
+                                client.socket.write(&connection_response.to_bytes())?;
+                                client.state = ClientState::Connected { destination };
+                            }
                         }
 
-                        ClientState::Connected { destination } => {}
+                        ClientState::Connected { destination } => {
+                            if revents.contains(PollFlags::POLLIN) {
+                                // TODO: ensure server has POLLOUT
+                                client.socket.sendfile(
+                                    &destination,
+                                    0,
+                                    Some(NonZeroUsize::new(16384).unwrap()),
+                                )?;
+                            }
+                        }
                     }
                 }
             }
@@ -258,13 +287,26 @@ impl Server {
     }
 }
 
+#[derive(Default)]
 pub enum ClientState {
+    #[default]
     AwaitingGreeting,
-    AwaitingGreetingResponse { request: GreetingRequest },
+    AwaitingGreetingResponse {
+        request: GreetingRequest,
+    },
+
     AwaitingConnection,
-    AwaitingDNS { domain: String },
-    AwaitingConnectionResponse { request: ConnectionRequest },
-    Connected { destination: Socket },
+    AwaitingDNS {
+        domain: String,
+    },
+
+    AwaitingConnectionResponse {
+        destination: Socket,
+    },
+
+    Connected {
+        destination: Socket,
+    },
 }
 
 pub struct Client {
