@@ -22,6 +22,13 @@
             </i>
         </h6>
 
+        {% if let Some(state) = location.city %}
+        <p>
+            <strong>State: </strong> {{ state }}
+
+        </p>
+        {% endif%}
+
         {% if let Some(city) = location.city %}
         <p>
             <strong>City: </strong> {{ city }}
@@ -32,6 +39,12 @@
         {% if let (Some(street), Some(house)) = (location.street.as_ref(), location.housenumber.as_ref()) %}
         <p>
             <strong>Street: </strong> {{ street }}, {{ house }}
+        </p>
+        {% endif %}
+
+        {% if let Some(postcode) = location.postcode %}
+        <p>
+            <strong>Postcode: </strong> {{ postcode }}
         </p>
         {% endif %}
     </div>
