@@ -172,10 +172,47 @@ pub struct PlaceDetails {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(from = "String")]
+pub struct Rating {
+    pub stars: u32,
+    pub is_heritage: bool,
+}
+
+impl From<String> for Rating {
+    fn from(value: String) -> Self {
+        let is_heritage = value.ends_with('h');
+        let stars = match value.chars().next() {
+            Some('1') => 1,
+            Some('2') => 2,
+            Some('3') => 3,
+
+            _ => 0,
+        };
+
+        Self { stars, is_heritage }
+    }
+}
+
+impl std::fmt::Display for Rating {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for _ in 0..self.stars {
+            write!(f, "★")?;
+        }
+
+        if self.is_heritage {
+            write!(f, " Cultural Heritage")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PlaceResponse {
     pub xid: String,
     pub name: String,
-    pub rate: String,
+
+    pub rate: Rating,
 
     #[serde(default)]
     pub info: Option<PlaceDetails>,
