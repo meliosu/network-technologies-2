@@ -2,9 +2,8 @@
 
 use std::{
     collections::HashMap,
-    io::{self, Read, Write},
+    io::{self},
     net::{Ipv4Addr, SocketAddrV4},
-    num::NonZeroUsize,
     os::fd::{AsFd, AsRawFd, FromRawFd},
 };
 
@@ -52,13 +51,7 @@ impl Server {
 
         let message = rustdns::Message::from_slice(&buffer[..received])?;
 
-        log::trace!("dns answer: {message:#?}");
-
-        let rustdns::Message {
-            questions, answers, ..
-        } = message;
-
-        //let domain = questions[0].name.clone();
+        let rustdns::Message { answers, .. } = message;
 
         self.answers
             .extend(answers.into_iter().filter_map(|a| match a.resource {
@@ -69,21 +62,9 @@ impl Server {
             }));
 
         Ok(())
-
-        //let Some(ip) = answers.into_iter().find_map(|a| match a.resource {
-        //    rustdns::Resource::A(ip) => Some(ip),
-        //    _ => None,
-        //}) else {
-        //    // TODO: handle properly
-        //    panic!("DNS Query Returned No IPv4 (A) answers");
-        //};
-        //
-        //Ok((domain, ip))
     }
 
     fn send_dns(&mut self, domain: &str) -> io::Result<()> {
-        log::trace!("sending dns for domain {domain}");
-
         let mut message = rustdns::Message::default();
 
         message.add_question(domain, rustdns::Type::A, rustdns::Class::Internet);
@@ -136,10 +117,8 @@ impl Server {
     pub fn connect_to(ip: &Ipv4Addr) -> io::Result<Socket> {
         let destination = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
 
-        log::trace!("connecting to {ip}");
         destination.connect(&SocketAddrV4::new(*ip, 443).into())?;
         destination.set_nonblocking(true)?;
-        log::trace!("connected to {ip}");
 
         Ok(destination)
     }
@@ -180,8 +159,6 @@ impl Server {
 
             if dns_revents.contains(PollFlags::POLLIN) {
                 self.recv_dns()?;
-                //let answer = self.recv_dns()?;
-                //self.answers.push(answer);
             }
 
             if dns_revents.contains(PollFlags::POLLOUT) {
@@ -218,12 +195,6 @@ impl Server {
                         let n = server_socket.read(&mut buffer)?;
                         client_socket.write(&buffer[..n])?;
 
-                        //server_socket.sendfile(
-                        //    &client_socket.as_raw_fd(),
-                        //    0,
-                        //    Some(NonZeroUsize::new(16384).unwrap()),
-                        //)?;
-
                         std::mem::forget(server_socket);
                         std::mem::forget(client_socket);
                     }
@@ -248,13 +219,9 @@ impl Server {
                                     panic!("invalid greeting request");
                                 };
 
-                                log::trace!("got greeting request: {greeting_request:#?}");
-
                                 client.state = ClientState::AwaitingGreetingResponse {
                                     request: greeting_request,
                                 };
-                            } else {
-                                eprintln!("NO POLLIN in AwaitingGreeting");
                             }
                         }
 
@@ -268,8 +235,6 @@ impl Server {
 
                                     client.socket.write(&greeting_response.to_bytes())?;
 
-                                    log::trace!("sent greeting response: {greeting_response:#?}");
-
                                     client.state = ClientState::AwaitingConnection;
                                 } else {
                                     let greeting_response = GreetingResponse {
@@ -278,14 +243,9 @@ impl Server {
                                     };
 
                                     client.socket.write(&greeting_response.to_bytes())?;
-                                    log::trace!("sent greeting response: {greeting_response:#?}");
-
                                     // TODO: close client connection
-
                                     client.state = ClientState::AwaitingConnection;
                                 }
-                            } else {
-                                eprintln!("NO POLLOUT in AwaitingGreetingResponse");
                             }
                         }
 
@@ -308,8 +268,6 @@ impl Server {
                                             client.socket.as_raw_fd(),
                                         );
 
-                                        log::trace!("connected to dest");
-
                                         client.state = ClientState::Connected { destination };
                                     }
 
@@ -323,12 +281,8 @@ impl Server {
                                         client.state = ClientState::AwaitingDNS {
                                             domain: domain.to_string(),
                                         };
-
-                                        log::trace!("awaiting dns");
                                     }
                                 }
-                            } else {
-                                eprintln!("NO POLLIN in AwaitingConnection");
                             }
                         }
 
@@ -346,11 +300,6 @@ impl Server {
 
                                 client.state =
                                     ClientState::AwaitingConnectionResponse { destination };
-
-                                log::trace!("connected to destination after dns");
-                            } else {
-                                eprintln!("didn't find domain {domain}");
-                                client.state = ClientState::AwaitingDNS { domain };
                             }
                         }
 
@@ -373,10 +322,6 @@ impl Server {
 
                                 client.socket.write(&connection_response.to_bytes())?;
                                 client.state = ClientState::Connected { destination };
-
-                                log::trace!("fully connected");
-                            } else {
-                                eprintln!("NO POLLOUT in AwaitingConnectionResponse")
                             }
                         }
 
@@ -387,15 +332,6 @@ impl Server {
                                 let n = client.socket.read(&mut buffer)?;
                                 destination.write(&buffer[..n])?;
 
-                                //client.socket.sendfile(
-                                //    &destination,
-                                //    0,
-                                //    Some(NonZeroUsize::new(16384).unwrap()),
-                                //)?;
-
-                                client.state = ClientState::Connected { destination };
-                            } else {
-                                eprintln!("NO POLLIN in Connected");
                                 client.state = ClientState::Connected { destination };
                             }
                         }
