@@ -396,6 +396,7 @@ impl Server {
                                 client.state = ClientState::Connected { destination };
                             } else {
                                 eprintln!("NO POLLIN in Connected");
+                                client.state = ClientState::Connected { destination };
                             }
                         }
                     }
