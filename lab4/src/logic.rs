@@ -1,8 +1,14 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use rand::seq::SliceRandom;
 
-use rand::seq::{IteratorRandom, SliceRandom};
+#[derive(Debug, Clone)]
+pub struct Game {
+    width: usize,
+    height: usize,
+    snakes: Vec<Snake>,
+    food: Vec<(usize, usize)>,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
@@ -10,6 +16,13 @@ pub enum Direction {
     Down,
     Left,
     Right,
+}
+
+#[derive(Debug, Clone)]
+pub struct Snake {
+    id: i32,
+    dir: Direction,
+    body: Vec<(usize, usize)>,
 }
 
 impl Direction {
@@ -32,47 +45,17 @@ impl Direction {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Ends {
-    head: (usize, usize),
-    tail: (usize, usize),
-}
-
-#[derive(Debug)]
-pub struct Game {
-    width: usize,
-    height: usize,
-    ends: HashMap<i32, Ends>,
-    cells: Vec<Vec<Cell>>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Cell {
-    Empty,
-    Food,
-    Snake { id: i32, direction: Direction },
-}
-
-impl Cell {
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Cell::Empty => true,
-            _ => false,
-        }
+impl Snake {
+    pub fn head(&self) -> (usize, usize) {
+        self.body[self.body.len() - 1]
     }
 
-    pub fn is_snake(&self) -> bool {
-        match self {
-            Cell::Snake { .. } => true,
-            _ => false,
-        }
+    pub fn tail(&self) -> (usize, usize) {
+        self.body[0]
     }
 
-    pub fn is_food(&self) -> bool {
-        match self {
-            Cell::Food => true,
-            _ => false,
-        }
+    pub fn contains(&self, pos: &(usize, usize)) -> bool {
+        self.body.contains(pos)
     }
 }
 
@@ -81,102 +64,120 @@ impl Game {
         Self {
             width,
             height,
-            ends: HashMap::new(),
-            cells: vec![vec![Cell::Empty; width]; height],
+            snakes: Vec::new(),
+            food: Vec::new(),
         }
     }
 
-    pub fn free_cells(&mut self) -> Vec<&mut Cell> {
-        let mut result = Vec::new();
+    pub fn has_snake_at(&self, x: usize, y: usize) -> bool {
+        self.snakes.iter().any(|s| s.contains(&(x, y)))
+    }
 
-        for row in self.cells.iter_mut() {
-            for cell in row.iter_mut() {
-                if cell.is_empty() {
-                    result.push(cell);
+    pub fn has_food_at(&self, x: usize, y: usize) -> bool {
+        self.food.contains(&(x, y))
+    }
+
+    pub fn free_cells(&self) -> Vec<(usize, usize)> {
+        let mut results = Vec::new();
+
+        for x in 0..self.width {
+            for y in 0..self.height {
+                if self.has_food_at(x, y) {
+                    continue;
                 }
+
+                if self.has_snake_at(x, y) {
+                    continue;
+                }
+
+                results.push((x, y));
             }
         }
 
-        result
+        results
     }
 
     pub fn spawn_food(&mut self, count: usize) {
-        let mut free = self.free_cells();
-
-        for idx in (0..free.len()).choose_multiple(&mut rand::thread_rng(), count) {
-            *free[idx] = Cell::Food;
+        for &pos in self
+            .free_cells()
+            .choose_multiple(&mut rand::thread_rng(), count)
+        {
+            self.food.push(pos);
         }
-    }
-
-    pub fn free_spawn_positions(&self) -> Vec<((usize, usize), Direction)> {
-        let mut result = Vec::new();
-
-        for x in 2..self.width - 2 {
-            'outer: for y in 2..self.height - 2 {
-                for cx in x - 2..x + 2 {
-                    for cy in y - 2..y + 2 {
-                        if self.cells[cy][cx].is_snake() {
-                            continue 'outer;
-                        }
-                    }
-                }
-
-                if !self.cells[y][x].is_empty() {
-                    continue 'outer;
-                }
-
-                if !self.cells[y - 1][x].is_empty() {
-                    result.push(((x, y), Direction::Down));
-                }
-
-                if !self.cells[y + 1][x].is_empty() {
-                    result.push(((x, y), Direction::Up));
-                }
-
-                if !self.cells[y][x - 1].is_empty() {
-                    result.push(((x, y), Direction::Right));
-                }
-
-                if !self.cells[y][x + 1].is_empty() {
-                    result.push(((x, y), Direction::Left));
-                }
-            }
-        }
-
-        result
-    }
-
-    pub fn spawn_snake(&mut self, id: i32) -> bool {
-        let free = self.free_spawn_positions();
-
-        let Some(&((x, y), direction)) = free.choose(&mut rand::thread_rng()) else {
-            return false;
-        };
-
-        self.cells[y][x] = Cell::Snake { id, direction };
-
-        let (dx, dy) = direction.opposite().dxdy();
-        let (x, y) = self.offset(x, y, dx, dy);
-
-        self.cells[y][x] = Cell::Snake { id, direction };
-        true
     }
 
     pub fn offset(&self, x: usize, y: usize, dx: isize, dy: isize) -> (usize, usize) {
-        let real_x = if x as isize + dx > 0 {
+        let real_x = if x as isize + dx >= 0 {
             (x as isize + dx) as usize % self.width
         } else {
             ((self.width + x) as isize + dx) as usize
         };
 
-        let real_y = if y as isize + dy > 0 {
+        let real_y = if y as isize + dy >= 0 {
             (y as isize + dy) as usize % self.height
         } else {
-            ((self.width + y) as isize + dy) as usize
+            ((self.height + y) as isize + dy) as usize
         };
 
         (real_x, real_y)
     }
 
-    pub fn step(&mut self) {}
+    pub fn free_spawn_ponts(&self) -> Vec<Snake> {
+        let mut results = Vec::new();
+
+        for x in 2..self.width - 2 {
+            'outer: for y in 2..self.height - 2 {
+                for cx in x - 2..x + 2 {
+                    for cy in y - 2..y + 2 {
+                        if self.has_snake_at(cx, cy) {
+                            continue 'outer;
+                        }
+                    }
+                }
+
+                if self.has_food_at(x, y) {
+                    continue 'outer;
+                }
+
+                for dir in [
+                    Direction::Up,
+                    Direction::Down,
+                    Direction::Left,
+                    Direction::Right,
+                ] {
+                    let (dx, dy) = dir.dxdy();
+                    let (tail_x, tail_y) = self.offset(x, y, dx, dy);
+
+                    if self.has_food_at(tail_x, tail_y) {
+                        continue;
+                    }
+
+                    results.push(Snake {
+                        id: 0,
+                        dir: dir.opposite(),
+                        body: vec![(tail_x, tail_y), (x, y)],
+                    });
+                }
+            }
+        }
+
+        results
+    }
+
+    pub fn spawn_snake(&mut self, id: i32) -> bool {
+        if let Some(snake) = self.free_spawn_ponts().choose(&mut rand::thread_rng()) {
+            self.snakes.push(Snake {
+                id,
+                ..snake.clone()
+            });
+
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn step(&mut self) {
+        todo!()
+    }
 }
