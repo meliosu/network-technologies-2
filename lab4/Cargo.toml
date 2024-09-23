@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 prost = "0.13.3"
+rand = "0.8.5"
 serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
 toml = "0.8.19"
