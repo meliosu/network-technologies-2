@@ -3,3 +3,4 @@ pub mod proto {
 }
 
 pub mod logic;
+pub mod net;
