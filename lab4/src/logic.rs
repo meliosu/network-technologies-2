@@ -122,7 +122,7 @@ impl Game {
         (real_x, real_y)
     }
 
-    pub fn free_spawn_ponts(&self) -> Vec<Snake> {
+    pub fn free_spawn_points(&self) -> Vec<Snake> {
         let mut results = Vec::new();
 
         for x in 2..self.width - 2 {
@@ -165,7 +165,7 @@ impl Game {
     }
 
     pub fn spawn_snake(&mut self, id: i32) -> bool {
-        if let Some(snake) = self.free_spawn_ponts().choose(&mut rand::thread_rng()) {
+        if let Some(snake) = self.free_spawn_points().choose(&mut rand::thread_rng()) {
             self.snakes.push(Snake {
                 id,
                 ..snake.clone()
@@ -178,6 +178,50 @@ impl Game {
     }
 
     pub fn step(&mut self) {
-        todo!()
+        let moved: Vec<Snake> = self
+            .snakes
+            .clone()
+            .into_iter()
+            .map(|mut snake| {
+                let (head_x, head_y) = snake.head();
+                let (dx, dy) = snake.dir.dxdy();
+                let (next_x, next_y) = self.offset(head_x, head_y, dx, dy);
+
+                snake.body.push((next_x, next_y));
+
+                if !self.has_food_at(next_x, next_y) {
+                    snake.body.remove(0);
+                }
+
+                snake
+            })
+            .collect();
+
+        let mut kills = Vec::new();
+
+        for (i, first) in moved.iter().enumerate() {
+            for second in &moved[i..] {
+                if first.id == second.id {
+                    if first.body.iter().filter(|&&p| p == first.head()).count() > 1 {
+                        kills.push((first.id, second.id));
+                    }
+                } else if second.head() == first.head() {
+                    kills.push((first.id, second.id));
+                } else if second.body.contains(&first.head()) {
+                    kills.push((first.id, second.id));
+                } else if first.body.contains(&second.head()) {
+                    kills.push((second.id, first.id));
+                }
+            }
+        }
+
+        let moved: Vec<Snake> = moved
+            .clone()
+            .into_iter()
+            .filter(|snake| !kills.iter().find(|(_, id)| *id == snake.id).is_none())
+            .collect();
+
+        self.snakes = moved;
+        self.spawn_food(self.snakes.len() + 5);
     }
 }
