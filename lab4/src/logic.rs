@@ -2,7 +2,7 @@
 
 use rand::seq::SliceRandom;
 
-use crate::proto::Direction;
+use crate::{config::Config, proto::Direction};
 
 #[derive(Debug, Clone)]
 pub struct Game {
@@ -10,6 +10,7 @@ pub struct Game {
     pub height: usize,
     pub snakes: Vec<Snake>,
     pub food: Vec<(usize, usize)>,
+    pub food_const: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -60,10 +61,11 @@ impl Snake {
 }
 
 impl Game {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn from_cfg(config: &Config) -> Self {
         Self {
-            width,
-            height,
+            width: config.field.width,
+            height: config.field.height,
+            food_const: config.food,
             snakes: Vec::new(),
             food: Vec::new(),
         }
@@ -180,6 +182,8 @@ impl Game {
     }
 
     pub fn step(&mut self) {
+        let mut eaten = Vec::new();
+
         let mut moved: Vec<Snake> = self
             .snakes
             .clone()
@@ -193,6 +197,8 @@ impl Game {
 
                 if !self.has_food_at(next_x, next_y) {
                     snake.body.remove(0);
+                } else {
+                    eaten.push((next_x, next_y));
                 }
 
                 snake
@@ -220,7 +226,7 @@ impl Game {
         moved.retain(|snake| {
             if kills.iter().any(|(_, id)| *id == snake.id) {
                 for &pos in &snake.body {
-                    if rand::random() {
+                    if pos != snake.head() && rand::random() {
                         self.food.push(pos);
                     }
                 }
@@ -231,7 +237,9 @@ impl Game {
             }
         });
 
+        self.food.retain(|pos| !eaten.contains(pos));
         self.snakes = moved;
-        self.spawn_food(self.snakes.len() + 5);
+
+        self.spawn_food(self.snakes.len() + self.food_const);
     }
 }

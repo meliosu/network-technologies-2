@@ -68,6 +68,7 @@ impl Snake {
         }
 
         body.push((px as usize, py as usize));
+        body.reverse();
 
         body
     }

@@ -3,7 +3,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub field: Field,
@@ -25,7 +25,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
     pub width: usize,
     pub height: usize,
