@@ -125,11 +125,13 @@ impl Game {
     pub fn free_spawn_points(&self) -> Vec<Snake> {
         let mut results = Vec::new();
 
-        for x in 2..self.width - 2 {
-            'outer: for y in 2..self.height - 2 {
-                for cx in x - 2..x + 2 {
-                    for cy in y - 2..y + 2 {
-                        if self.has_snake_at(cx, cy) {
+        for x in 0..self.width {
+            'outer: for y in 0..self.height {
+                for dx in -2..=2 {
+                    for dy in -2..=2 {
+                        let (x, y) = self.offset(x, y, dx, dy);
+
+                        if self.has_snake_at(x, y) {
                             continue 'outer;
                         }
                     }
