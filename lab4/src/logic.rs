@@ -180,7 +180,7 @@ impl Game {
     }
 
     pub fn step(&mut self) {
-        let moved: Vec<Snake> = self
+        let mut moved: Vec<Snake> = self
             .snakes
             .clone()
             .into_iter()
@@ -217,11 +217,19 @@ impl Game {
             }
         }
 
-        let moved: Vec<Snake> = moved
-            .clone()
-            .into_iter()
-            .filter(|snake| !kills.iter().find(|(_, id)| *id == snake.id).is_none())
-            .collect();
+        moved.retain(|snake| {
+            if kills.iter().any(|(_, id)| *id == snake.id) {
+                for pos in snake.body {
+                    if rand::random() {
+                        self.food.push(pos);
+                    }
+                }
+
+                false
+            } else {
+                true
+            }
+        });
 
         self.snakes = moved;
         self.spawn_food(self.snakes.len() + 5);
