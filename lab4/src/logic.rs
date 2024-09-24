@@ -2,27 +2,21 @@
 
 use rand::seq::SliceRandom;
 
+use crate::proto::Direction;
+
 #[derive(Debug, Clone)]
 pub struct Game {
-    width: usize,
-    height: usize,
-    snakes: Vec<Snake>,
-    food: Vec<(usize, usize)>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
+    pub width: usize,
+    pub height: usize,
+    pub snakes: Vec<Snake>,
+    pub food: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Snake {
-    id: i32,
-    dir: Direction,
-    body: Vec<(usize, usize)>,
+    pub id: i32,
+    pub dir: Direction,
+    pub body: Vec<(usize, usize)>,
 }
 
 impl Direction {
@@ -56,6 +50,12 @@ impl Snake {
 
     pub fn contains(&self, pos: &(usize, usize)) -> bool {
         self.body.contains(pos)
+    }
+
+    pub fn update_direction(&mut self, new: Direction) {
+        if self.dir != new {
+            self.dir = new;
+        }
     }
 }
 
@@ -219,7 +219,7 @@ impl Game {
 
         moved.retain(|snake| {
             if kills.iter().any(|(_, id)| *id == snake.id) {
-                for pos in snake.body {
+                for &pos in &snake.body {
                     if rand::random() {
                         self.food.push(pos);
                     }
