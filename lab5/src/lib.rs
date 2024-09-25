@@ -70,7 +70,7 @@ impl Server {
                     eprintln!("NO POLLIN in AwaitingGreetingRequest");
                 }
 
-                let request: GreetingRequest = client.socket.recv_packet().unwrap();
+                let request: GreetingRequest = client.socket.recv_packet()?;
                 Some(State::AwaitingGreetingResponse { request })
             }
 
@@ -215,7 +215,7 @@ impl Server {
                 }
 
                 if let Some(client) = self.clients.remove(fd) {
-                    if let Some(next) = self.transition_client(client, *revents)? {
+                    if let Ok(Some(next)) = self.transition_client(client, *revents) {
                         self.clients.insert(*fd, next);
                     }
                 } else if let Some((server, client)) =
