@@ -66,19 +66,11 @@ impl Server {
     ) -> io::Result<Option<Client>> {
         let state = match client.state {
             State::AwaitingGreetingRequest => {
-                if !revents.contains(PollFlags::POLLIN) {
-                    eprintln!("NO POLLIN in AwaitingGreetingRequest");
-                }
-
                 let request: GreetingRequest = client.socket.recv_packet()?;
                 Some(State::AwaitingGreetingResponse { request })
             }
 
             State::AwaitingGreetingResponse { request } => {
-                if !revents.contains(PollFlags::POLLOUT) {
-                    eprintln!("NO POLLOUT in AwaitingGreetingResponse");
-                }
-
                 if request.auths.contains(&0x0) {
                     let response = GreetingResponse::new(0x0);
                     client.socket.send_packet(&response)?;
@@ -91,10 +83,6 @@ impl Server {
             }
 
             State::AwaitingConnectionRequest => {
-                if !revents.contains(PollFlags::POLLIN) {
-                    eprintln!("NO POLLIN in AwaitingConnectionRequest");
-                }
-
                 let request: ConnectionRequest = client.socket.recv_packet()?;
 
                 match request.address {
@@ -118,10 +106,6 @@ impl Server {
             State::AwaitingDNS { domain, request } => Some(State::AwaitingDNS { request, domain }),
 
             State::AwaitingConnectionResponse { destination, addr } => {
-                if !revents.contains(PollFlags::POLLOUT) {
-                    eprintln!("NO POLLOUT in AwaitingConnectionResponse");
-                }
-
                 let response = ConnectionResponse::new(addr);
                 client.socket.send_packet(&response)?;
                 Some(State::Connected { destination })
