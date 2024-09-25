@@ -1,5 +1,7 @@
+use crate::config::Config;
 use crate::logic::Snake;
 use crate::proto::game_state::Coord;
+use crate::proto::GameConfig;
 
 impl From<(usize, usize)> for Coord {
     fn from((x, y): (usize, usize)) -> Self {
@@ -71,5 +73,16 @@ impl Snake {
         body.reverse();
 
         body
+    }
+}
+
+impl From<&Config> for GameConfig {
+    fn from(config: &Config) -> Self {
+        Self {
+            width: Some(config.field.width as i32),
+            height: Some(config.field.height as i32),
+            food_static: Some(config.food as i32),
+            state_delay_ms: Some(config.delay as i32),
+        }
     }
 }

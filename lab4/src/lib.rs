@@ -4,5 +4,6 @@ pub mod proto {
 
 pub mod bridge;
 pub mod config;
+pub mod id;
 pub mod logic;
 pub mod net;
