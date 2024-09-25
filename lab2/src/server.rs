@@ -125,6 +125,10 @@ impl Connection {
             bytes_rcvd
         );
 
+        if bytes_rcvd < request.len {
+            let _ = std::fs::remove_file(PathBuf::from("uploads").join(&request.name));
+        }
+
         self.send(&TransferComplete::new(bytes_rcvd))?;
 
         println!("{}: connection closed", format_sockaddr(&self.addr));
