@@ -54,8 +54,13 @@ impl Client {
 
         let mut buffer = [0u8; 8192];
 
+        let Some(filename) = file.as_ref().file_name() else {
+            eprintln!("invalid file name");
+            return Ok(());
+        };
+
         self.send(&TransferRequest::new(
-            file.as_ref().to_string_lossy().to_string(),
+            filename.to_string_lossy().to_string(),
             len,
         ))?;
 
