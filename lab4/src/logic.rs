@@ -82,15 +82,9 @@ impl Game {
 
         for x in 0..self.width {
             for y in 0..self.height {
-                if self.has_food_at(x, y) {
-                    continue;
+                if !self.has_food_at(x, y) && !self.has_snake_at(x, y) {
+                    results.push((x, y));
                 }
-
-                if self.has_snake_at(x, y) {
-                    continue;
-                }
-
-                results.push((x, y));
             }
         }
 

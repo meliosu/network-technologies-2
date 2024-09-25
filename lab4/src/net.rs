@@ -1,9 +1,7 @@
 use std::{
     io,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6, UdpSocket},
+    net::{Ipv4Addr, SocketAddr, UdpSocket},
 };
-
-use tokio::net::UdpSocket;
 
 pub struct Communicator {
     mcast: UdpSocket,
@@ -44,9 +42,9 @@ impl Communicator {
         Ok(())
     }
 
-    pub fn receive<M: prost::Message>(&self) -> io::Result<(M, SocketAddr)> {
+    pub fn receive<M: prost::Message + Default>(&self) -> io::Result<(M, SocketAddr)> {
         let mut buffer = [0u8; 4096];
         let (n, addr) = self.mcast.recv_from(&mut buffer)?;
-        Ok((M::decode(&buffer[..n]), addr))
+        Ok((M::decode(&buffer[..n])?, addr))
     }
 }
