@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read, Write},
+    io::{self},
     mem,
     net::{Ipv4Addr, SocketAddrV4},
     os::fd::{AsFd, AsRawFd},
@@ -16,6 +16,7 @@ use crate::types::{
 };
 
 mod socket_ext;
+mod types;
 
 pub struct Server {
     incoming: Socket,
@@ -162,7 +163,7 @@ impl Server {
 
                 let request: GreetingRequest = client.socket.recv_packet()?;
 
-                let response = if !request.auths.contains(&0x0) {
+                let response = if !request.auths.contains(&0x0) || request.version != 0x5 {
                     GreetingResponse::new(0x0)
                 } else {
                     GreetingResponse::new(0xFF)
