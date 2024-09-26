@@ -32,19 +32,25 @@ impl Communicator {
         })
     }
 
-    pub fn multicast<M: prost::Message>(&self, msg: M) -> io::Result<()> {
+    pub fn send_multicast<M: prost::Message>(&self, msg: M) -> io::Result<()> {
         self.ucast.send_to(&msg.encode_to_vec()[..], self.m_addr)?;
         Ok(())
     }
 
-    pub fn unicast<M: prost::Message>(&self, msg: M, addr: SocketAddr) -> io::Result<()> {
+    pub fn send_unicast<M: prost::Message>(&self, msg: M, addr: SocketAddr) -> io::Result<()> {
         self.ucast.send_to(&msg.encode_to_vec()[..], addr)?;
         Ok(())
     }
 
-    pub fn receive<M: prost::Message + Default>(&self) -> io::Result<(M, SocketAddr)> {
+    pub fn recv_multicast<M: prost::Message + Default>(&self) -> io::Result<(M, SocketAddr)> {
         let mut buffer = [0u8; 4096];
         let (n, addr) = self.mcast.recv_from(&mut buffer)?;
+        Ok((M::decode(&buffer[..n])?, addr))
+    }
+
+    pub fn recv_unicast<M: prost::Message + Default>(&self) -> io::Result<(M, SocketAddr)> {
+        let mut buffer = [0u8; 4096];
+        let (n, addr) = self.ucast.recv_from(&mut buffer)?;
         Ok((M::decode(&buffer[..n])?, addr))
     }
 }
