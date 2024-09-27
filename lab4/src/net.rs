@@ -32,12 +32,12 @@ impl Communicator {
         })
     }
 
-    pub fn send_multicast<M: prost::Message>(&self, msg: M) -> io::Result<()> {
+    pub fn send_multicast<M: prost::Message>(&self, msg: &M) -> io::Result<()> {
         self.ucast.send_to(&msg.encode_to_vec()[..], self.m_addr)?;
         Ok(())
     }
 
-    pub fn send_unicast<M: prost::Message>(&self, msg: M, addr: SocketAddr) -> io::Result<()> {
+    pub fn send_unicast<M: prost::Message>(&self, msg: &M, addr: SocketAddr) -> io::Result<()> {
         self.ucast.send_to(&msg.encode_to_vec()[..], addr)?;
         Ok(())
     }
