@@ -3,6 +3,10 @@ use std::{
     net::{Ipv4Addr, SocketAddr, UdpSocket},
 };
 
+use prost::Message;
+
+use crate::{logic::Game, proto::GameMessage};
+
 pub struct Communicator {
     mcast: UdpSocket,
     ucast: UdpSocket,
@@ -32,25 +36,25 @@ impl Communicator {
         })
     }
 
-    pub fn send_multicast<M: prost::Message>(&self, msg: &M) -> io::Result<()> {
-        self.ucast.send_to(&msg.encode_to_vec()[..], self.m_addr)?;
+    pub fn send_multicast(&self, msg: &GameMessage) -> io::Result<()> {
+        self.ucast.send_to(&msg.encode_to_vec(), self.m_addr)?;
         Ok(())
     }
 
-    pub fn send_unicast<M: prost::Message>(&self, msg: &M, addr: SocketAddr) -> io::Result<()> {
-        self.ucast.send_to(&msg.encode_to_vec()[..], addr)?;
+    pub fn send_unicast(&self, msg: &GameMessage, addr: SocketAddr) -> io::Result<()> {
+        self.ucast.send_to(&msg.encode_to_vec(), addr)?;
         Ok(())
     }
 
-    pub fn recv_multicast<M: prost::Message + Default>(&self) -> io::Result<(M, SocketAddr)> {
-        let mut buffer = [0u8; 4096];
+    pub fn recv_multicast(&self) -> io::Result<(GameMessage, SocketAddr)> {
+        let mut buffer = [0u8; 1024];
         let (n, addr) = self.mcast.recv_from(&mut buffer)?;
-        Ok((M::decode(&buffer[..n])?, addr))
+        Ok((GameMessage::decode(&buffer[..n])?, addr))
     }
 
-    pub fn recv_unicast<M: prost::Message + Default>(&self) -> io::Result<(M, SocketAddr)> {
-        let mut buffer = [0u8; 4096];
+    pub fn recv_unicast(&self) -> io::Result<(GameMessage, SocketAddr)> {
+        let mut buffer = [0u8; 1024];
         let (n, addr) = self.ucast.recv_from(&mut buffer)?;
-        Ok((M::decode(&buffer[..n])?, addr))
+        Ok((GameMessage::decode(&buffer[..n])?, addr))
     }
 }
