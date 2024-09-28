@@ -5,7 +5,7 @@ use std::{
 
 use prost::Message;
 
-use crate::{logic::Game, proto::GameMessage};
+use crate::proto::GameMessage;
 
 pub struct Communicator {
     mcast: UdpSocket,
