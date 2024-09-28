@@ -1,6 +1,6 @@
 use std::{
     io,
-    net::{Ipv4Addr, SocketAddr, UdpSocket},
+    net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
 };
 
 use prost::Message;
@@ -14,7 +14,9 @@ pub struct Communicator {
 }
 
 impl Communicator {
-    pub fn new(m_addr: SocketAddr) -> io::Result<Self> {
+    pub fn new<A: ToSocketAddrs>(m_addr: A) -> io::Result<Self> {
+        let m_addr = m_addr.to_socket_addrs()?.next().unwrap();
+
         let mcast = UdpSocket::bind(m_addr)?;
 
         match m_addr {
