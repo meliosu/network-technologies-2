@@ -1,0 +1,47 @@
+#![allow(dead_code)]
+
+use ratatui::prelude::*;
+
+pub struct Grid {
+    width: usize,
+    height: usize,
+    cells: Vec<Vec<Color>>,
+}
+
+impl Grid {
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            width,
+            height,
+            cells: vec![vec![Color::Black; width]; height],
+        }
+    }
+}
+
+impl Widget for &Grid {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
+        assert!(self.width == area.width as usize);
+        assert!(self.height == area.height as usize * 2);
+
+        for row in 0..self.height / 2 {
+            for col in 0..self.width {
+                let foreground = self.cells[row * 2][col];
+                let background = self.cells[row * 2 + 1][col];
+
+                let style = Style {
+                    fg: Some(foreground),
+                    bg: Some(background),
+                    ..Default::default()
+                };
+
+                if let Some(cell) = buf.cell_mut((area.x + col as u16, area.y + row as u16)) {
+                    cell.set_style(style);
+                    cell.set_char('▀');
+                }
+            }
+        }
+    }
+}
