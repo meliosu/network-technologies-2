@@ -3,8 +3,8 @@
 use ratatui::prelude::*;
 
 pub struct Grid {
-    width: usize,
-    height: usize,
+    pub width: usize,
+    pub height: usize,
     cells: Vec<Vec<Color>>,
 }
 
@@ -16,15 +16,19 @@ impl Grid {
             cells: vec![vec![Color::Black; width]; height],
         }
     }
+
+    pub fn set_cell(&mut self, (x, y): &(usize, usize), color: Color) {
+        self.cells[*y][*x] = color;
+    }
 }
 
-impl Widget for &Grid {
+impl Widget for Grid {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        assert!(self.width == area.width as usize);
-        assert!(self.height == area.height as usize * 2);
+        assert!(self.width <= area.width as usize);
+        assert!(self.height <= area.height as usize * 2);
 
         for row in 0..self.height / 2 {
             for col in 0..self.width {
