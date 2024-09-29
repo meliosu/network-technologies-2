@@ -9,7 +9,7 @@ pub struct State {
     pub role: NodeRole,
     pub game: Option<Game>,
     pub players: Vec<Player>,
-    pub announcements: Vec<GameAnnouncement>,
+    pub announcements: Vec<(SocketAddr, GameAnnouncement)>,
 }
 
 pub struct Player {
