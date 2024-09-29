@@ -9,81 +9,114 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
+use ratatui::{prelude::CrosstermBackend, Terminal};
+
 use lab4::{
     config::Config,
     logic::Game,
-    proto::NodeRole,
+    net::Communicator,
+    proto::{
+        game_message::{AnnouncementMsg, Type},
+        NodeRole,
+    },
     state::State,
     ui::{self, input::Input},
 };
-use ratatui::{prelude::CrosstermBackend, Terminal};
 
 const MULTIADDR: &'static str = "239.192.0.4:9192";
-const CONFIG_PATH: &'static str = "snakes.toml";
 
 fn main() -> io::Result<()> {
     let state = Arc::new(Mutex::new(State::new()));
-    let mut config = Config::load(CONFIG_PATH).unwrap_or_default();
+    let comm = Arc::new(Communicator::new(MULTIADDR)?);
 
-    config.field.width = 60;
-    config.field.height = 40;
+    let ui_handle = thread::spawn({
+        let state = Arc::clone(&state);
+        let mut term = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+        move || {
+            ui::utils::set_panic_hook();
+            ui::utils::setup().unwrap();
 
-    ui::utils::set_panic_hook();
-    ui::utils::setup()?;
+            loop {
+                let state = state.lock().unwrap();
 
-    let mut term = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+                if state.exited {
+                    break;
+                }
 
-    loop {
-        {
+                term.draw(|frame| ui::main::ui(frame, &state)).unwrap();
+
+                drop(state);
+
+                thread::sleep(Duration::from_millis(20));
+            }
+
+            ui::utils::reset_panic_hook();
+            ui::utils::teardown().unwrap();
+        }
+    });
+
+    thread::spawn({
+        let state = Arc::clone(&state);
+        let comm = Arc::clone(&comm);
+        move || loop {
+            match ui::input::read(None).unwrap() {
+                Some(Input::Escape) => {
+                    let mut state = state.lock().unwrap();
+                    state.exited = true;
+                    break;
+                }
+
+                _ => {}
+            }
+        }
+    });
+
+    thread::spawn({
+        let state = Arc::clone(&state);
+        let comm = Arc::clone(&comm);
+        move || loop {
             let state = state.lock().unwrap();
-            term.draw(|frame| ui::main::ui(frame, &state))?;
+
+            drop(state);
+            thread::sleep(Duration::from_secs(1));
         }
+    });
 
-        match ui::input::read(Some(Duration::from_millis(20)))? {
-            Some(Input::Escape) => break,
+    thread::spawn({
+        let state = Arc::clone(&state);
+        let comm = Arc::clone(&comm);
+        move || loop {
+            let (msg, addr) = comm.recv_multicast().unwrap();
 
-            Some(Input::NewGame) => {
-                let mut game_state = state.lock().unwrap();
+            let announces = match msg.r#type {
+                Some(Type::Announcement(announce)) => announce.games,
+                _ => continue,
+            };
 
-                let mut game = Game::from_cfg(&config);
+            let mut state = state.lock().unwrap();
 
-                if !game.spawn_snake(0) {
-                    panic!("uwuwu");
-                }
-
-                game_state.game = Some(game);
-                game_state.role = NodeRole::Master;
-
-                thread::spawn({
-                    let state = Arc::clone(&state);
-                    move || loop {
-                        {
-                            let mut state = state.lock().unwrap();
-
-                            if let Some(ref mut game) = state.game {
-                                game.step();
-                            }
-                        }
-
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                });
+            if state
+                .announcements
+                .iter()
+                .find(|(a, ..)| *a == addr)
+                .is_none()
+            {
+                state
+                    .announcements
+                    .extend(announces.into_iter().map(|a| (addr, a)));
             }
-
-            Some(Input::Turn(direction)) => {
-                if let Some(ref mut game) = state.lock().unwrap().game {
-                    if let Some(snake) = game.snakes.iter_mut().find(|s| s.id == 0) {
-                        snake.update_direction(direction);
-                    }
-                }
-            }
-
-            _ => {}
         }
-    }
+    });
 
-    ui::utils::reset_panic_hook();
-    ui::utils::teardown()?;
+    thread::spawn({
+        let state = Arc::clone(&state);
+        let comm = Arc::clone(&comm);
+        move || loop {
+            todo!()
+        }
+    });
+
+    ui_handle.join().unwrap();
 
     Ok(())
 }
