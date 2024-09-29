@@ -54,7 +54,7 @@ impl Snake {
     }
 
     pub fn update_direction(&mut self, new: Direction) {
-        if self.dir != new {
+        if self.dir != new && self.dir != new.opposite() {
             self.dir = new;
         }
     }
@@ -234,6 +234,6 @@ impl Game {
         self.food.retain(|pos| !eaten.contains(pos));
         self.snakes = moved;
 
-        self.spawn_food(self.snakes.len() + self.food_const);
+        self.spawn_food((self.snakes.len() + self.food_const).saturating_sub(self.food.len()));
     }
 }
