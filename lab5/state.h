@@ -2,23 +2,23 @@
 #define SOCKS_STATE_H
 
 #include "callback.h"
+#include "dnsqueue.h"
 
 typedef struct ClientContext {
     int client;
     int remote;
     void *buff;
+    int len;
+    int cap;
 } ClientContext;
 
-ClientContext *ClientContextCreate();
+ClientContext *ClientContextCreate(int clientfd, int cap);
 void ClientContextDestroy(ClientContext *context);
 
-void OnDNSReadyRequest(Context *ctx, char *domain);
-void OnDNSResponse(Context *ctx, ClientContext *cctx);
+void OnDNSResponse(Context *ctx);
 void OnIncomingConnection(Context *ctx);
 void OnGreetingRequest(Context *ctx, ClientContext *cctx);
-void OnReadyGreetingResponse(Context *ctx, ClientContext *cctx);
 void OnConnectionRequest(Context *ctx, ClientContext *cctx);
-void OnReadyConnectionResponse(Context *ctx, ClientContext *cctx);
 void OnServerData(Context *ctx, ClientContext *cctx);
 void OnClientData(Context *ctx, ClientContext *cctx);
 
