@@ -1,10 +1,13 @@
 #ifndef SOCKS_CALLBACK_H
 #define SOCKS_CALLBACK_H
 
+#include "dnsqueue.h"
+
 typedef struct Context {
     int epfd;
     int serverfd;
     int dnsfd;
+    DNSQueue dnsqueue;
 } Context;
 
 typedef struct Callback {
