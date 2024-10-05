@@ -13,7 +13,7 @@ typedef struct ClientContext {
 } ClientContext;
 
 ClientContext *ClientContextCreate(int clientfd, int cap);
-void ClientContextDestroy(ClientContext *context);
+void ClientContextDestroy(Context *ctx, ClientContext *cctx);
 
 void OnDNSResponse(Context *ctx);
 void OnIncomingConnection(Context *ctx);

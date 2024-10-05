@@ -14,6 +14,8 @@
 #include "socks.h"
 #include "state.h"
 
+#define LOGCALL printf("IN %s\n", __func__)
+
 ClientContext *ClientContextCreate(int clientfd, int cap) {
     ClientContext *context = malloc(sizeof(ClientContext));
     context->client = clientfd;
@@ -24,29 +26,37 @@ ClientContext *ClientContextCreate(int clientfd, int cap) {
     return context;
 }
 
-void ClientContextDestroy(ClientContext *context) {
-    // TODO: delete fds from epoll
-
-    if (context->client) {
-        close(context->client);
+void ClientContextDestroy(Context *ctx, ClientContext *cctx) {
+    if (cctx->client) {
+        epoll_del(ctx->epfd, cctx->client);
     }
 
-    if (context->remote) {
-        close(context->remote);
+    if (cctx->remote) {
+        epoll_del(ctx->epfd, cctx->remote);
     }
 
-    free(context->buff);
+    if (cctx->client) {
+        close(cctx->client);
+    }
+
+    if (cctx->remote) {
+        close(cctx->remote);
+    }
+
+    free(cctx->buff);
 }
 
 void OnDNSResponse(Context *ctx) {
     // TODO
 
     Callback *callback = CallbackCreate(OnDNSResponse, NULL);
-    epoll_add(ctx->epfd, ctx->dnsfd, EPOLLIN, callback);
+    epoll_mod(ctx->epfd, ctx->dnsfd, EPOLLIN, callback);
 }
 
 // DONE
 void OnIncomingConnection(Context *ctx) {
+    LOGCALL;
+
     int conn = accept(ctx->serverfd, NULL, NULL);
     if (conn < 0) {
         perror("accept");
@@ -62,14 +72,17 @@ void OnIncomingConnection(Context *ctx) {
     epoll_add(ctx->epfd, conn, EPOLLIN, callback);
 
     callback = CallbackCreate(OnIncomingConnection, NULL);
-    epoll_add(ctx->epfd, ctx->serverfd, EPOLLIN, callback);
+    epoll_mod(ctx->epfd, ctx->serverfd, EPOLLIN, callback);
 }
 
 // DONE
 void OnGreetingRequest(Context *ctx, ClientContext *cctx) {
+    LOGCALL;
+
     int n = read(cctx->client, cctx->buff, cctx->cap);
     if (n < 0) {
-        ClientContextDestroy(cctx);
+        perror("reading greeting request");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
@@ -89,24 +102,30 @@ void OnGreetingRequest(Context *ctx, ClientContext *cctx) {
 
     if (request->ver == 0x5 && has_no_auth) {
         response.cauth = 0x00;
+        printf("response: success\n");
     } else {
+        printf("response: failure\n");
         response.cauth = 0xFF;
     }
 
     int m = write(cctx->client, &response, sizeof(response));
     if (m < 0) {
-        ClientContextDestroy(cctx);
+        perror("writing greeting response");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
     Callback *callback = CallbackCreate(OnConnectionRequest, cctx);
-    epoll_add(ctx->epfd, cctx->client, EPOLLIN, callback);
+    epoll_mod(ctx->epfd, cctx->client, EPOLLIN, callback);
 }
 
 void OnConnectionRequest(Context *ctx, ClientContext *cctx) {
+    LOGCALL;
+
     int n = read(cctx->client, cctx->buff, cctx->cap);
     if (n < 0) {
-        ClientContextDestroy(cctx);
+        perror("reading connection request");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
@@ -119,14 +138,19 @@ void OnConnectionRequest(Context *ctx, ClientContext *cctx) {
             .sin_port = request->addr.ipv4.port,
         };
 
-        int remote = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+        int remote = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (remote < 0) {
             perror("socket");
         }
 
         int err = connect(remote, (struct sockaddr *)&addr, sizeof(addr));
-        if (err && errno != EINPROGRESS) {
+        if (err) {
             perror("connect");
+        }
+
+        err = net_set_nonblocking(remote);
+        if (err) {
+            perror("set nonblocking");
         }
 
         ConnectResponse response = {
@@ -140,8 +164,8 @@ void OnConnectionRequest(Context *ctx, ClientContext *cctx) {
 
         int n = write(cctx->client, &response, sizeof(response));
         if (n < 0) {
-            perror("write");
-            ClientContextDestroy(cctx);
+            perror("writing connection response");
+            ClientContextDestroy(ctx, cctx);
             return;
         }
 
@@ -159,14 +183,19 @@ void OnConnectionRequest(Context *ctx, ClientContext *cctx) {
 
         memcpy(&addr.sin6_addr, request->addr.ipv6.addr, 16);
 
-        int remote = socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+        int remote = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
         if (remote < 0) {
             perror("socket");
         }
 
         int err = connect(remote, (struct sockaddr *)&addr, sizeof(addr));
-        if (err && errno != EINPROGRESS) {
+        if (err) {
             perror("connect");
+        }
+
+        err = net_set_nonblocking(remote);
+        if (err) {
+            perror("set nonblocking");
         }
 
         ConnectResponse response = {
@@ -180,8 +209,8 @@ void OnConnectionRequest(Context *ctx, ClientContext *cctx) {
 
         int n = write(cctx->client, &response, sizeof(response));
         if (n < 0) {
-            perror("write");
-            ClientContextDestroy(cctx);
+            perror("writing connection response");
+            ClientContextDestroy(ctx, cctx);
             return;
         }
 
@@ -195,22 +224,26 @@ void OnConnectionRequest(Context *ctx, ClientContext *cctx) {
         // TODO
     } else {
         printf("encountered unknown address type\n");
-        ClientContextDestroy(cctx);
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 }
 
 // DONE
 void OnServerData(Context *ctx, ClientContext *cctx) {
+    LOGCALL;
+
     int n = read(cctx->remote, cctx->buff, cctx->cap);
-    if (n < 0) {
-        ClientContextDestroy(cctx);
+    if (n <= 0) {
+        perror("reading data from remote");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
     int m = write(cctx->client, cctx->buff, n);
     if (m < 0) {
-        ClientContextDestroy(cctx);
+        perror("writing data to client");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
@@ -220,15 +253,19 @@ void OnServerData(Context *ctx, ClientContext *cctx) {
 
 // DONE
 void OnClientData(Context *ctx, ClientContext *cctx) {
+    LOGCALL;
+
     int n = read(cctx->client, cctx->buff, cctx->cap);
-    if (n < 0) {
-        ClientContextDestroy(cctx);
+    if (n <= 0) {
+        perror("reading data from client");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
     int m = write(cctx->remote, cctx->buff, n);
     if (m < 0) {
-        ClientContextDestroy(cctx);
+        perror("writing data to remote");
+        ClientContextDestroy(ctx, cctx);
         return;
     }
 
