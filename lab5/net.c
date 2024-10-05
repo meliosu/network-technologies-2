@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <arpa/inet.h>
@@ -81,4 +82,18 @@ int net_dns() {
     }
 
     return sockfd;
+}
+
+int net_set_nonblocking(int fd) {
+    int status = fcntl(fd, F_GETFL, 0);
+    if (status < 0) {
+        return -1;
+    }
+
+    int err = fcntl(fd, F_SETFL, status | O_NONBLOCK);
+    if (err) {
+        return -1;
+    }
+
+    return 0;
 }
