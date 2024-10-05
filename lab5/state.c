@@ -9,46 +9,10 @@
 #include <sys/epoll.h>
 
 #include "callback.h"
+#include "epoll.h"
 #include "net.h"
 #include "socks.h"
 #include "state.h"
-
-int epoll_add(int epfd, int fd, int events, Callback *callback) {
-    struct epoll_event event = {
-        .events = events | EPOLLONESHOT,
-        .data.ptr = callback,
-    };
-
-    int err = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &event);
-    if (err) {
-        perror("epoll_add");
-    }
-
-    return err;
-}
-
-int epoll_mod(int epfd, int fd, int events, Callback *callback) {
-    struct epoll_event event = {
-        .events = events | EPOLLONESHOT,
-        .data.ptr = callback,
-    };
-
-    int err = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
-    if (err) {
-        perror("epoll_mod");
-    }
-
-    return err;
-}
-
-int epoll_del(int epfd, int fd) {
-    int err = epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
-    if (err) {
-        perror("epoll_del");
-    }
-
-    return err;
-}
 
 ClientContext *ClientContextCreate(int clientfd, int cap) {
     ClientContext *context = malloc(sizeof(ClientContext));
@@ -61,6 +25,8 @@ ClientContext *ClientContextCreate(int clientfd, int cap) {
 }
 
 void ClientContextDestroy(ClientContext *context) {
+    // TODO: delete fds from epoll
+
     if (context->client) {
         close(context->client);
     }
@@ -72,7 +38,12 @@ void ClientContextDestroy(ClientContext *context) {
     free(context->buff);
 }
 
-void OnDNSResponse(Context *ctx) {}
+void OnDNSResponse(Context *ctx) {
+    // TODO
+
+    Callback *callback = CallbackCreate(OnDNSResponse, NULL);
+    epoll_add(ctx->epfd, ctx->dnsfd, EPOLLIN, callback);
+}
 
 // DONE
 void OnIncomingConnection(Context *ctx) {
@@ -89,6 +60,9 @@ void OnIncomingConnection(Context *ctx) {
     ClientContext *context = ClientContextCreate(conn, 4096);
     Callback *callback = CallbackCreate(OnGreetingRequest, context);
     epoll_add(ctx->epfd, conn, EPOLLIN, callback);
+
+    callback = CallbackCreate(OnIncomingConnection, NULL);
+    epoll_add(ctx->epfd, ctx->serverfd, EPOLLIN, callback);
 }
 
 // DONE
