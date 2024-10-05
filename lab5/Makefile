@@ -1,7 +1,7 @@
 CC=gcc
 FLAGS=-Wall -g
 
-OBJECTS=main.o net.o socks.o state.o
+OBJECTS=main.o net.o socks.o state.o dnsqueue.o dns.o callback.o
 
 all: main
 
@@ -22,6 +22,12 @@ callback.o:
 
 state.o:
 	$(CC) $(FLAGS) -c state.c
+
+dnsqueue.o:
+	$(CC) $(FLAGS) -c dnsqueue.c
+
+dns.o:
+	$(CC) $(FLAGS) -c dns.c
 
 
 clean:
