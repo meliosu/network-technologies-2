@@ -8,7 +8,9 @@
 #include <sys/epoll.h>
 
 #include "callback.h"
+#include "epoll.h"
 #include "net.h"
+#include "state.h"
 
 #define MAX_EVENTS 512
 
@@ -39,7 +41,11 @@ int main() {
 
     struct epoll_event events[MAX_EVENTS];
 
-    // TODO: add server and dns descriptor to bootstrap event loop
+    Callback *server_cb = CallbackCreate(OnIncomingConnection, NULL);
+    epoll_add(epfd, serverfd, EPOLLIN, server_cb);
+
+    Callback *dns_cb = CallbackCreate(OnDNSResponse, NULL);
+    epoll_add(epfd, dnsfd, EPOLLIN, dns_cb);
 
     while (1) {
         int num_events = epoll_wait(epfd, events, MAX_EVENTS, -1);
