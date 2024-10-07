@@ -140,16 +140,19 @@ void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
     ConnectRequest *request = cctx->client_buf;
     ConnectResponse *response = cctx->remote_buf;
 
+    response->ver = 0x05;
+    response->rsv = 0x00;
+
     if (res < 0) {
         response->status = 0x01;
     } else {
         response->status = 0x00;
-        response->addr.ipv4 = request->addr.ipv4;
+        response->addr = request->addr;
     }
 
     // TODO: make async
     // remove magic const
-    int n = write(cctx->clientfd, cctx->remote_buf, 9);
+    int n = write(cctx->clientfd, cctx->remote_buf, 10);
     if (n < 0) {
         perror("write");
     }
