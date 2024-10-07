@@ -20,7 +20,7 @@ int net_server(int port, int backlog) {
 
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
-        .sin_addr = htonl(INADDR_ANY),
+        .sin_addr.s_addr = htonl(INADDR_ANY),
         .sin_port = htons(port),
     };
 
@@ -47,7 +47,7 @@ int net_dns() {
 
     struct sockaddr_in dns_addr = {
         .sin_family = AF_INET,
-        .sin_addr = htonl(0x08080808),
+        .sin_addr.s_addr = htonl(0x08080808),
         .sin_port = htons(53),
     };
 
