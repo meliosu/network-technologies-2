@@ -26,7 +26,7 @@ ClientContext *ClientContextCreate(int clientfd, int cap) {
 void ClientContextDestroy(ClientContext *context) {
     context->refcount -= 1;
 
-    if (context->refcount == 1) {
+    if (context->refcount == 0) {
         if (context->clientfd) {
             close(context->clientfd);
         }
@@ -181,7 +181,6 @@ void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
 
 void OnClientData(Context *ctx, int size, ClientContext *cctx) {
     if (size <= 0) {
-        printf("freeing ctx\n");
         ClientContextDestroy(cctx);
         return;
     }
@@ -201,7 +200,6 @@ void OnClientData(Context *ctx, int size, ClientContext *cctx) {
 
 void OnRemoteData(Context *ctx, int size, ClientContext *cctx) {
     if (size <= 0) {
-        printf("freeing ctx\n");
         ClientContextDestroy(cctx);
         return;
     }
