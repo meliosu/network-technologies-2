@@ -13,6 +13,7 @@ typedef struct {
     int cap;
     void *client_buf;
     void *remote_buf;
+    int refcount;
 } ClientContext;
 
 ClientContext *ClientContextCreate(int clientfd, int cap);

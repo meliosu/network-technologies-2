@@ -19,21 +19,26 @@ ClientContext *ClientContextCreate(int clientfd, int cap) {
     context->cap = cap;
     context->client_buf = malloc(cap);
     context->remote_buf = malloc(cap);
+    context->refcount = 1;
     return context;
 }
 
 void ClientContextDestroy(ClientContext *context) {
-    if (context->clientfd) {
-        close(context->clientfd);
-    }
+    context->refcount -= 1;
 
-    if (context->remotefd) {
-        close(context->remotefd);
-    }
+    if (context->refcount == 1) {
+        if (context->clientfd) {
+            close(context->clientfd);
+        }
 
-    free(context->client_buf);
-    free(context->remote_buf);
-    free(context);
+        if (context->remotefd) {
+            close(context->remotefd);
+        }
+
+        free(context->client_buf);
+        free(context->remote_buf);
+        free(context);
+    }
 }
 
 void OnIncomingConnection(Context *ctx, int conn) {
@@ -152,6 +157,8 @@ void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
     if (response->status != 0x00) {
         ClientContextDestroy(cctx);
     } else {
+        cctx->refcount += 1;
+
         Callback *callback;
         struct io_uring_sqe *sqe;
 
@@ -171,6 +178,7 @@ void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
 
 void OnClientData(Context *ctx, int size, ClientContext *cctx) {
     if (size <= 0) {
+        printf("freeing ctx\n");
         ClientContextDestroy(cctx);
         return;
     }
@@ -190,6 +198,7 @@ void OnClientData(Context *ctx, int size, ClientContext *cctx) {
 
 void OnRemoteData(Context *ctx, int size, ClientContext *cctx) {
     if (size <= 0) {
+        printf("freeing ctx\n");
         ClientContextDestroy(cctx);
         return;
     }
