@@ -30,15 +30,19 @@ int main() {
         return -1;
     }
 
-    Context context = {
+    Context ctx = {
         .serverfd = server,
         .dnsfd = dns,
         .ring = &ring,
     };
 
-    struct io_uring_cqe *cqe;
+    Callback *callback = CallbackCreate(OnIncomingConnection, NULL);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx.ring);
+    io_uring_prep_accept(sqe, ctx.serverfd, NULL, NULL, 0);
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx.ring);
 
-    // TODO: bootstrap event loop
+    struct io_uring_cqe *cqe;
 
     while (1) {
         err = io_uring_wait_cqe(&ring, &cqe);
@@ -48,8 +52,9 @@ int main() {
         }
 
         Callback *callback = (Callback *)cqe->user_data;
-        callback->func(&context, cqe->res, callback->arg);
+        callback->func(&ctx, cqe->res, callback->arg);
         CallbackDestroy(callback);
+        io_uring_cqe_seen(ctx.ring, cqe);
     }
 
     io_uring_queue_exit(&ring);

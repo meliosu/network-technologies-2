@@ -10,9 +10,9 @@ typedef struct {
 typedef struct {
     int clientfd;
     int remotefd;
-    int len;
     int cap;
-    void *buf;
+    void *client_buf;
+    void *remote_buf;
 } ClientContext;
 
 ClientContext *ClientContextCreate(int clientfd, int cap);

@@ -58,4 +58,6 @@ typedef struct {
     Address addr;
 } PACKED ConnectResponse;
 
+int socks_greeting_has_auth(GreetingRequest *request, u8 auth);
+
 #endif /* SOCKS_SOCKS_H */
