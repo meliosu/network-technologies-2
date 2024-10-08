@@ -40,6 +40,8 @@ int main() {
         .serverfd = server,
         .dnsfd = dns,
         .ring = &ring,
+        .questions.first = NULL,
+        .questions.last = NULL,
     };
 
     Callback *callback = CallbackCreate(OnIncomingConnection, NULL);

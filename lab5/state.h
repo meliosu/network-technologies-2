@@ -1,9 +1,12 @@
 #ifndef SOCKS_STATE_H
 #define SOCKS_STATE_H
 
+#include "queue.h"
+
 typedef struct {
     int serverfd;
     int dnsfd;
+    Queue questions;
     struct io_uring *ring;
 } Context;
 
