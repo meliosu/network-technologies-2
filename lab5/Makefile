@@ -1,9 +1,9 @@
 CC=gcc
 FLAGS=-Wall -g
 TARGET=proxy
-LIBS=-luring
+LIBS=-luring -lcares
 
-OBJECTS=main.o callback.o net.o socks.o state.o
+OBJECTS=main.o callback.o net.o socks.o state.o queue.o
 
 all: $(TARGET)
 
@@ -24,6 +24,9 @@ socks.o:
 
 state.o:
 	$(CC) $(FLAGS) -c state.c
+
+queue.o:
+	$(CC) $(FLAGS) -c queue.c
 
 
 clean:

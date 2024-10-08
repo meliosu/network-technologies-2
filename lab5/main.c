@@ -1,5 +1,6 @@
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -42,6 +43,8 @@ int main() {
         .ring = &ring,
         .questions.first = NULL,
         .questions.last = NULL,
+        .dns_buf = malloc(64 * 1024),
+        .dns_buflen = 64 * 1024,
     };
 
     Callback *callback = CallbackCreate(OnIncomingConnection, NULL);

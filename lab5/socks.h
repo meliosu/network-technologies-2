@@ -6,8 +6,8 @@
 #define PACKED __attribute__((packed))
 
 #define ADDR_INET 0x01
-#define ADDR_INET6 0x03
-#define ADDR_DNS 0x04
+#define ADDR_INET6 0x04
+#define ADDR_DNS 0x03
 
 typedef uint8_t u8;
 typedef uint16_t u16;

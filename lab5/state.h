@@ -8,6 +8,8 @@ typedef struct {
     int dnsfd;
     Queue questions;
     struct io_uring *ring;
+    void *dns_buf;
+    int dns_buflen;
 } Context;
 
 typedef struct {
@@ -38,6 +40,6 @@ void OnRcvdRemoteData(Context *ctx, int size, ClientContext *cctx);
 void OnSentRemoteData(Context *ctx, int size, ClientContext *cctx);
 
 void OnReceivedDNS(Context *ctx, int size);
-void OnSentDNS(Context *ctx, int size);
+void OnSentDNS(Context *ctx, int size, unsigned char *buffer);
 
 #endif /* SOCKS_STATE_H */

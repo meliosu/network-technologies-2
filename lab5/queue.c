@@ -1,12 +1,13 @@
 #include <stdlib.h>
-#include <string.h>
 
 #include "queue.h"
 
-void queue_insert(Queue *queue, char *key, void *value) {
+void queue_insert(Queue *queue, unsigned short key, void *value) {
     Node *node = malloc(sizeof(Node));
     node->key = key;
     node->value = value;
+    node->prev = NULL;
+    node->next = NULL;
 
     if (!queue->first) {
         queue->first = queue->last = node;
@@ -16,11 +17,11 @@ void queue_insert(Queue *queue, char *key, void *value) {
     }
 }
 
-void queue_remove(Queue *queue, char *key, void **value) {
+void queue_remove(Queue *queue, unsigned short key, void **value) {
     Node *curr = queue->first;
 
     while (curr) {
-        if (!strcmp(key, curr->key)) {
+        if (curr->key == key) {
             if (curr->next) {
                 curr->next->prev = curr->prev;
             }
@@ -44,4 +45,6 @@ void queue_remove(Queue *queue, char *key, void **value) {
 
         curr = curr->next;
     }
+
+    *value = NULL;
 }

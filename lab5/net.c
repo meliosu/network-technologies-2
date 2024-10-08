@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -47,9 +48,10 @@ int net_dns() {
 
     struct sockaddr_in dns_addr = {
         .sin_family = AF_INET,
-        .sin_addr.s_addr = htonl(0x08080808),
         .sin_port = htons(53),
     };
+
+    inet_pton(AF_INET, "127.0.0.53", &dns_addr.sin_addr);
 
     int err = connect(sockfd, (struct sockaddr *)&dns_addr, sizeof(dns_addr));
     if (err) {

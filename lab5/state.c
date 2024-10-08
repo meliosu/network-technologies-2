@@ -1,3 +1,6 @@
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,9 +11,14 @@
 
 #include <liburing.h>
 
+#include <ares.h>
+
 #include "callback.h"
+#include "queue.h"
 #include "socks.h"
 #include "state.h"
+
+static unsigned short ID = 1;
 
 ClientContext *ClientContextCreate(int clientfd, int cap) {
     ClientContext *context = malloc(sizeof(ClientContext));
@@ -45,12 +53,88 @@ void OnReceivedDNS(Context *ctx, int size) {
     if (size <= 0) {
         return;
     }
+
+    int err;
+    int id;
+    struct hostent *hostent;
+    ares_dns_record_t *record;
+    ClientContext *cctx;
+
+    err = ares_dns_parse(ctx->dns_buf, size, 0, &record);
+    if (err != ARES_SUCCESS) {
+        return;
+    }
+
+    id = ares_dns_record_get_id(record);
+    queue_remove(&ctx->questions, id, (void **)&cctx);
+
+    if (!cctx) {
+        ares_dns_record_destroy(record);
+        return;
+    }
+
+    err = ares_parse_a_reply(ctx->dns_buf, size, &hostent, NULL, NULL);
+    if (err != ARES_SUCCESS) {
+        ares_dns_record_destroy(record);
+
+        ConnectResponse *response = cctx->remote_buf;
+
+        response->ver = 0x05;
+        response->rsv = 0x00;
+        response->status = 0x01;
+
+        Callback *callback = CallbackCreate(OnSentConnect, cctx);
+        struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+        io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf,
+                            sizeof(*response), 0);
+        io_uring_sqe_set_data(sqe, callback);
+        io_uring_submit(ctx->ring);
+        return;
+    }
+
+    ConnectRequest *request = cctx->client_buf;
+
+    struct in_addr *addr = (struct in_addr *)hostent->h_addr_list[0];
+    unsigned short port =
+        *(unsigned short *)(request->addr.dns.nameport + request->addr.dns.len);
+
+    struct sockaddr_in remote = {
+        .sin_family = AF_INET,
+        .sin_addr = *addr,
+        .sin_port = port,
+    };
+
+    ares_free_hostent(hostent);
+    ares_dns_record_destroy(record);
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sockfd < 0) {
+        ClientContextDestroy(cctx);
+        return;
+    }
+
+    cctx->remotefd = sockfd;
+
+    Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_connect(sqe, sockfd, (struct sockaddr *)&remote,
+                          sizeof(remote));
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx->ring);
 }
 
-void OnSentDNS(Context *ctx, int size) {
+void OnSentDNS(Context *ctx, int size, unsigned char *buffer) {
     if (size <= 0) {
         return;
     }
+
+    ares_free_string(buffer);
+
+    Callback *callback = CallbackCreate(OnReceivedDNS, NULL);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_read(sqe, ctx->dnsfd, ctx->dns_buf, ctx->dns_buflen, 0);
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx->ring);
 }
 
 void OnIncomingConnection(Context *ctx, int conn) {
@@ -95,9 +179,8 @@ void OnReceivedGreeting(Context *ctx, int size, ClientContext *cctx) {
 
     Callback *callback = CallbackCreate(OnSentGreeting, cctx);
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
-    io_uring_prep_write(
-        sqe, cctx->clientfd, cctx->remote_buf, sizeof(GreetingResponse), 0
-    );
+    io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf,
+                        sizeof(GreetingResponse), 0);
     io_uring_sqe_set_data(sqe, callback);
     io_uring_submit(ctx->ring);
 }
@@ -147,9 +230,8 @@ void OnReceivedConnect(Context *ctx, int size, ClientContext *cctx) {
 
         Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
         struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
-        io_uring_prep_connect(
-            sqe, sockfd, (struct sockaddr *)&addr, sizeof(addr)
-        );
+        io_uring_prep_connect(sqe, sockfd, (struct sockaddr *)&addr,
+                              sizeof(addr));
         io_uring_sqe_set_data(sqe, callback);
         io_uring_submit(ctx->ring);
     } else if (request->addr.type == ADDR_INET6) {
@@ -168,17 +250,27 @@ void OnReceivedConnect(Context *ctx, int size, ClientContext *cctx) {
 
         Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
         struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
-        io_uring_prep_connect(
-            sqe, cctx->remotefd, (struct sockaddr *)&addr, sizeof(addr)
-        );
+        io_uring_prep_connect(sqe, cctx->remotefd, (struct sockaddr *)&addr,
+                              sizeof(addr));
         io_uring_sqe_set_data(sqe, callback);
         io_uring_submit(ctx->ring);
     } else {
-        // TODO: form dns question and add to queue here
+        unsigned short id = ID++;
+        char *name = strndup(request->addr.dns.nameport, request->addr.dns.len);
 
-        Callback *callback = CallbackCreate(OnSentDNS, NULL);
+        unsigned char *buffer;
+        int buffer_len;
+
+        ares_create_query(name, ARES_CLASS_IN, ARES_REC_TYPE_A, id, 1, &buffer,
+                          &buffer_len, 0);
+
+        free(name);
+
+        queue_insert(&ctx->questions, id, cctx);
+
+        Callback *callback = CallbackCreate(OnSentDNS, buffer);
         struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
-        io_uring_prep_write(sqe, ...);
+        io_uring_prep_write(sqe, ctx->dnsfd, buffer, buffer_len, 0);
         io_uring_sqe_set_data(sqe, callback);
         io_uring_submit(ctx->ring);
     }
