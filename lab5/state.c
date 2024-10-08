@@ -41,6 +41,18 @@ void ClientContextDestroy(ClientContext *context) {
     }
 }
 
+void OnReceivedDNS(Context *ctx, int size) {
+    if (size <= 0) {
+        return;
+    }
+}
+
+void OnSentDNS(Context *ctx, int size) {
+    if (size <= 0) {
+        return;
+    }
+}
+
 void OnIncomingConnection(Context *ctx, int conn) {
     if (conn < 0) {
         return;
@@ -162,9 +174,13 @@ void OnReceivedConnect(Context *ctx, int size, ClientContext *cctx) {
         io_uring_sqe_set_data(sqe, callback);
         io_uring_submit(ctx->ring);
     } else {
-        printf("DNS not yet supported");
-        ClientContextDestroy(cctx);
-        return;
+        // TODO: form dns question and add to queue here
+
+        Callback *callback = CallbackCreate(OnSentDNS, NULL);
+        struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+        io_uring_prep_write(sqe, ...);
+        io_uring_sqe_set_data(sqe, callback);
+        io_uring_submit(ctx->ring);
     }
 }
 
