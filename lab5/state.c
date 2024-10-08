@@ -73,19 +73,30 @@ void OnReceivedGreeting(Context *ctx, int size, ClientContext *cctx) {
     GreetingRequest *request = cctx->client_buf;
     GreetingResponse *response = cctx->remote_buf;
 
+    response->ver = 0x05;
+
     if (request->ver == 0x05 && socks_greeting_has_auth(request, 0x00)) {
-        response->ver = 0x05;
         response->cauth = 0x00;
     } else {
-        response->ver = 0x05;
         response->cauth = 0xFF;
     }
 
-    // TODO: make this asynchronous
-    int n = write(cctx->clientfd, cctx->remote_buf, sizeof(GreetingResponse));
-    if (n < 0) {
-        perror("write");
+    Callback *callback = CallbackCreate(OnSentGreeting, cctx);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_write(
+        sqe, cctx->clientfd, cctx->remote_buf, sizeof(GreetingResponse), 0
+    );
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx->ring);
+}
+
+void OnSentGreeting(Context *ctx, int size, ClientContext *cctx) {
+    if (size <= 0) {
+        ClientContextDestroy(cctx);
+        return;
     }
+
+    GreetingResponse *response = cctx->remote_buf;
 
     if (response->cauth == 0xFF) {
         ClientContextDestroy(cctx);
@@ -124,16 +135,68 @@ void OnReceivedConnect(Context *ctx, int size, ClientContext *cctx) {
 
         Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
         struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
-        io_uring_prep_connect(sqe, sockfd, (struct sockaddr *)&addr,
-                              sizeof(addr));
+        io_uring_prep_connect(
+            sqe, sockfd, (struct sockaddr *)&addr, sizeof(addr)
+        );
         io_uring_sqe_set_data(sqe, callback);
         io_uring_submit(ctx->ring);
+    } else if (request->addr.type == ADDR_INET6) {
+        int sockfd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+        if (sockfd < 0) {
+            ClientContextDestroy(cctx);
+            return;
+        }
 
+        cctx->remotefd = sockfd;
+
+        struct sockaddr_in6 addr;
+        addr.sin6_family = AF_INET6;
+        addr.sin6_port = request->addr.ipv6.port;
+        memcpy(&addr.sin6_addr, request->addr.ipv6.addr, 16);
+
+        Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
+        struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+        io_uring_prep_connect(
+            sqe, cctx->remotefd, (struct sockaddr *)&addr, sizeof(addr)
+        );
+        io_uring_sqe_set_data(sqe, callback);
+        io_uring_submit(ctx->ring);
     } else {
-        printf("dns or ipv6 not supported yet\n");
+        printf("DNS not yet supported");
         ClientContextDestroy(cctx);
         return;
     }
+}
+
+void OnSentConnect(Context *ctx, int size, ClientContext *cctx) {
+    if (size <= 0) {
+        ClientContextDestroy(cctx);
+        return;
+    }
+
+    ConnectResponse *response = cctx->remote_buf;
+
+    if (response->status != 0x00) {
+        ClientContextDestroy(cctx);
+        return;
+    }
+
+    cctx->refcount += 1;
+
+    Callback *callback;
+    struct io_uring_sqe *sqe;
+
+    callback = CallbackCreate(OnRcvdClientData, cctx);
+    sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_read(sqe, cctx->clientfd, cctx->client_buf, cctx->cap, 0);
+    io_uring_sqe_set_data(sqe, callback);
+
+    callback = CallbackCreate(OnRcvdRemoteData, cctx);
+    sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_read(sqe, cctx->remotefd, cctx->remote_buf, cctx->cap, 0);
+    io_uring_sqe_set_data(sqe, callback);
+
+    io_uring_submit(ctx->ring);
 }
 
 void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
@@ -150,67 +213,59 @@ void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
         response->addr = request->addr;
     }
 
-    // TODO: make async
-    // remove magic const
-    int n = write(cctx->clientfd, cctx->remote_buf, 10);
-    if (n < 0) {
-        perror("write");
-    }
-
-    if (response->status != 0x00) {
-        ClientContextDestroy(cctx);
-    } else {
-        cctx->refcount += 1;
-
-        Callback *callback;
-        struct io_uring_sqe *sqe;
-
-        callback = CallbackCreate(OnClientData, cctx);
-        sqe = io_uring_get_sqe(ctx->ring);
-        io_uring_prep_read(sqe, cctx->clientfd, cctx->client_buf, cctx->cap, 0);
-        io_uring_sqe_set_data(sqe, callback);
-
-        callback = CallbackCreate(OnRemoteData, cctx);
-        sqe = io_uring_get_sqe(ctx->ring);
-        io_uring_prep_read(sqe, cctx->remotefd, cctx->remote_buf, cctx->cap, 0);
-        io_uring_sqe_set_data(sqe, callback);
-
-        io_uring_submit(ctx->ring);
-    }
+    Callback *callback = CallbackCreate(OnSentConnect, cctx);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf, 10, 0);
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx->ring);
 }
 
-void OnClientData(Context *ctx, int size, ClientContext *cctx) {
+void OnRcvdClientData(Context *ctx, int size, ClientContext *cctx) {
     if (size <= 0) {
         ClientContextDestroy(cctx);
         return;
     }
 
-    // TODO: make this asynchronous
-    int n = write(cctx->remotefd, cctx->client_buf, size);
-    if (n < size) {
-        perror("write");
+    Callback *callback = CallbackCreate(OnSentClientData, cctx);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_write(sqe, cctx->remotefd, cctx->client_buf, size, 0);
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx->ring);
+}
+
+void OnSentClientData(Context *ctx, int size, ClientContext *cctx) {
+    if (size <= 0) {
+        ClientContextDestroy(cctx);
+        return;
     }
 
-    Callback *callback = CallbackCreate(OnClientData, cctx);
+    Callback *callback = CallbackCreate(OnRcvdClientData, cctx);
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
     io_uring_prep_read(sqe, cctx->clientfd, cctx->client_buf, cctx->cap, 0);
     io_uring_sqe_set_data(sqe, callback);
     io_uring_submit(ctx->ring);
 }
 
-void OnRemoteData(Context *ctx, int size, ClientContext *cctx) {
+void OnRcvdRemoteData(Context *ctx, int size, ClientContext *cctx) {
     if (size <= 0) {
         ClientContextDestroy(cctx);
         return;
     }
 
-    // TODO: make this asynchronous
-    int n = write(cctx->clientfd, cctx->remote_buf, size);
-    if (n < size) {
-        perror("write");
+    Callback *callback = CallbackCreate(OnSentRemoteData, cctx);
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
+    io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf, size, 0);
+    io_uring_sqe_set_data(sqe, callback);
+    io_uring_submit(ctx->ring);
+}
+
+void OnSentRemoteData(Context *ctx, int size, ClientContext *cctx) {
+    if (size <= 0) {
+        ClientContextDestroy(cctx);
+        return;
     }
 
-    Callback *callback = CallbackCreate(OnRemoteData, cctx);
+    Callback *callback = CallbackCreate(OnRcvdRemoteData, cctx);
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
     io_uring_prep_read(sqe, cctx->remotefd, cctx->remote_buf, cctx->cap, 0);
     io_uring_sqe_set_data(sqe, callback);
