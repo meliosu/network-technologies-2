@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,10 @@
 
 int main() {
     int err;
+
+    printf("[%d]\n", getpid());
+
+    signal(SIGPIPE, SIG_IGN);
 
     int server = net_server(1080, 10);
     if (server < 0) {

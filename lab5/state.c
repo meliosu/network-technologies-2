@@ -93,10 +93,17 @@ void OnReceivedDNS(Context *ctx, int size) {
     }
 
     ConnectRequest *request = cctx->client_buf;
+    ConnectResponse *response = cctx->remote_buf;
 
     struct in_addr *addr = (struct in_addr *)hostent->h_addr_list[0];
     unsigned short port =
         *(unsigned short *)(request->addr.dns.nameport + request->addr.dns.len);
+
+    response->ver = 0x05;
+    response->rsv = 0x00;
+    response->addr.type = ADDR_INET;
+    response->addr.ipv4.addr = *(int *)addr;
+    response->addr.ipv4.port = port;
 
     struct sockaddr_in remote = {
         .sin_family = AF_INET,
@@ -228,6 +235,11 @@ void OnReceivedConnect(Context *ctx, int size, ClientContext *cctx) {
             .sin_port = request->addr.ipv4.port,
         };
 
+        ConnectResponse *response = cctx->remote_buf;
+        response->ver = 0x05;
+        response->rsv = 0x00;
+        response->addr = request->addr;
+
         Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
         struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
         io_uring_prep_connect(sqe, sockfd, (struct sockaddr *)&addr,
@@ -247,6 +259,11 @@ void OnReceivedConnect(Context *ctx, int size, ClientContext *cctx) {
         addr.sin6_family = AF_INET6;
         addr.sin6_port = request->addr.ipv6.port;
         memcpy(&addr.sin6_addr, request->addr.ipv6.addr, 16);
+
+        ConnectResponse *response = cctx->remote_buf;
+        response->ver = 0x05;
+        response->rsv = 0x00;
+        response->addr = request->addr;
 
         Callback *callback = CallbackCreate(OnConnectedRemote, cctx);
         struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
@@ -308,22 +325,25 @@ void OnSentConnect(Context *ctx, int size, ClientContext *cctx) {
 }
 
 void OnConnectedRemote(Context *ctx, int res, ClientContext *cctx) {
-    ConnectRequest *request = cctx->client_buf;
     ConnectResponse *response = cctx->remote_buf;
-
-    response->ver = 0x05;
-    response->rsv = 0x00;
 
     if (res < 0) {
         response->status = 0x01;
     } else {
         response->status = 0x00;
-        response->addr = request->addr;
+    }
+
+    int addr_len;
+
+    if (response->addr.type == ADDR_INET) {
+        addr_len = ADDR_INET_LEN;
+    } else {
+        addr_len = ADDR_INET6_LEN;
     }
 
     Callback *callback = CallbackCreate(OnSentConnect, cctx);
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
-    io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf, 10, 0);
+    io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf, addr_len, 0);
     io_uring_sqe_set_data(sqe, callback);
     io_uring_submit(ctx->ring);
 }
@@ -338,7 +358,9 @@ void OnRcvdClientData(Context *ctx, int size, ClientContext *cctx) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
     io_uring_prep_write(sqe, cctx->remotefd, cctx->client_buf, size, 0);
     io_uring_sqe_set_data(sqe, callback);
-    io_uring_submit(ctx->ring);
+    if (io_uring_submit(ctx->ring) < 0) {
+        ClientContextDestroy(cctx);
+    }
 }
 
 void OnSentClientData(Context *ctx, int size, ClientContext *cctx) {
@@ -351,7 +373,9 @@ void OnSentClientData(Context *ctx, int size, ClientContext *cctx) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
     io_uring_prep_read(sqe, cctx->clientfd, cctx->client_buf, cctx->cap, 0);
     io_uring_sqe_set_data(sqe, callback);
-    io_uring_submit(ctx->ring);
+    if (io_uring_submit(ctx->ring) < 0) {
+        ClientContextDestroy(cctx);
+    }
 }
 
 void OnRcvdRemoteData(Context *ctx, int size, ClientContext *cctx) {
@@ -364,7 +388,9 @@ void OnRcvdRemoteData(Context *ctx, int size, ClientContext *cctx) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
     io_uring_prep_write(sqe, cctx->clientfd, cctx->remote_buf, size, 0);
     io_uring_sqe_set_data(sqe, callback);
-    io_uring_submit(ctx->ring);
+    if (io_uring_submit(ctx->ring) < 0) {
+        ClientContextDestroy(cctx);
+    }
 }
 
 void OnSentRemoteData(Context *ctx, int size, ClientContext *cctx) {
@@ -377,5 +403,7 @@ void OnSentRemoteData(Context *ctx, int size, ClientContext *cctx) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ctx->ring);
     io_uring_prep_read(sqe, cctx->remotefd, cctx->remote_buf, cctx->cap, 0);
     io_uring_sqe_set_data(sqe, callback);
-    io_uring_submit(ctx->ring);
+    if (io_uring_submit(ctx->ring) < 0) {
+        ClientContextDestroy(cctx);
+    }
 }

@@ -9,6 +9,9 @@
 #define ADDR_INET6 0x04
 #define ADDR_DNS 0x03
 
+#define ADDR_INET_LEN 10
+#define ADDR_INET6_LEN 22
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
