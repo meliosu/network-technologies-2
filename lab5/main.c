@@ -1,4 +1,3 @@
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,8 +10,6 @@
 #include "state.h"
 
 int main() {
-    printf("[%d]\n", getpid());
-
     int err;
 
     int server = net_server(1080, 10);
@@ -26,8 +23,6 @@ int main() {
         perror("net_dns");
         return -1;
     }
-
-    signal(SIGPIPE, SIG_IGN);
 
     struct io_uring ring;
 
