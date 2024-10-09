@@ -10,12 +10,27 @@
 #include "net.h"
 #include "state.h"
 
-int main() {
+unsigned short get_port(int argc, char **argv) {
+    if (argc < 2) {
+        return 1080;
+    }
+
+    int port = atoi(argv[1]);
+    if (port == 0) {
+        return 1080;
+    }
+
+    return port;
+}
+
+int main(int argc, char **argv) {
     int err;
 
     printf("[%d]\n", getpid());
 
     signal(SIGPIPE, SIG_IGN);
+
+    int port = get_port(argc, argv);
 
     int server = net_server(1080, 10);
     if (server < 0) {

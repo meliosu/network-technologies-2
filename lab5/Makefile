@@ -1,5 +1,5 @@
 CC=gcc
-FLAGS=-Wall -g
+FLAGS=-Wno-deprecated-declarations -g
 TARGET=proxy
 LIBS=-luring -lcares
 
