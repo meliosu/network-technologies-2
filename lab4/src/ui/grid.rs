@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use ratatui::prelude::*;
+use ratatui::{prelude::*, widgets::Paragraph};
 
 pub struct Grid {
     pub width: usize,
@@ -27,8 +27,14 @@ impl Widget for Grid {
     where
         Self: Sized,
     {
-        assert!(self.width <= area.width as usize);
-        assert!(self.height <= area.height as usize * 2);
+        if self.width > area.width as usize || self.height > area.height as usize * 2 {
+            Paragraph::new("Not enough cells to render field\nPlease resize screen")
+                .centered()
+                .red()
+                .render(area, buf);
+
+            return;
+        }
 
         for row in 0..self.height / 2 {
             for col in 0..self.width {
