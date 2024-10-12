@@ -19,16 +19,18 @@ use lab4::{
         game_message::{AnnouncementMsg, Type},
         NodeRole,
     },
-    state::State,
+    state::{Announcement, State},
     ui::{self, input::Input},
 };
 
 const MULTIADDR: &'static str = "239.192.0.4:9192";
 
 fn main() -> io::Result<()> {
+    // ok
     let state = Arc::new(Mutex::new(State::new()));
     let comm = Arc::new(Communicator::new(MULTIADDR)?);
 
+    // ok
     let ui_handle = thread::spawn({
         let state = Arc::clone(&state);
         let mut term = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -37,17 +39,14 @@ fn main() -> io::Result<()> {
             ui::utils::setup().unwrap();
 
             loop {
-                let state = state.lock().unwrap();
+                thread::sleep(Duration::from_millis(20));
 
+                let state = state.lock().unwrap();
                 if state.exited {
                     break;
                 }
 
                 term.draw(|frame| ui::main::ui(frame, &state)).unwrap();
-
-                drop(state);
-
-                thread::sleep(Duration::from_millis(20));
             }
 
             ui::utils::reset_panic_hook();
@@ -71,17 +70,20 @@ fn main() -> io::Result<()> {
         }
     });
 
+    // ok
     thread::spawn({
         let state = Arc::clone(&state);
-        let comm = Arc::clone(&comm);
         move || loop {
-            let state = state.lock().unwrap();
+            thread::sleep(Duration::from_secs(3));
 
-            drop(state);
-            thread::sleep(Duration::from_secs(1));
+            let mut state = state.lock().unwrap();
+            state
+                .announcements
+                .retain(|a| a.elapsed() < Duration::from_secs(3));
         }
     });
 
+    // ok
     thread::spawn({
         let state = Arc::clone(&state);
         let comm = Arc::clone(&comm);
@@ -95,24 +97,22 @@ fn main() -> io::Result<()> {
 
             let mut state = state.lock().unwrap();
 
+            for announcement in &mut state.announcements {
+                if announcement.addr == addr {
+                    announcement.refresh();
+                }
+            }
+
             if state
                 .announcements
                 .iter()
-                .find(|(a, ..)| *a == addr)
+                .find(|Announcement { addr: a, .. }| *a == addr)
                 .is_none()
             {
                 state
                     .announcements
-                    .extend(announces.into_iter().map(|a| (addr, a)));
+                    .extend(announces.into_iter().map(|a| Announcement::new(addr, a)));
             }
-        }
-    });
-
-    thread::spawn({
-        let state = Arc::clone(&state);
-        let comm = Arc::clone(&comm);
-        move || loop {
-            todo!()
         }
     });
 

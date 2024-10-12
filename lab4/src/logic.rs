@@ -6,6 +6,7 @@ use crate::{config::Config, proto::Direction};
 
 #[derive(Debug, Clone)]
 pub struct Game {
+    pub delay: usize,
     pub width: usize,
     pub height: usize,
     pub snakes: Vec<Snake>,
@@ -63,6 +64,7 @@ impl Snake {
 impl Game {
     pub fn from_cfg(config: &Config) -> Self {
         Self {
+            delay: config.delay,
             width: config.field.width,
             height: config.field.height,
             food_const: config.food,

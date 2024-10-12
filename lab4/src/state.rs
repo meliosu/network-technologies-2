@@ -19,6 +19,7 @@ pub struct State {
 }
 
 pub struct Player {
+    pub timestamp: Instant,
     pub player: GamePlayer,
     pub addr: SocketAddr,
 }
@@ -31,7 +32,11 @@ pub struct Announcement {
 
 impl Player {
     pub fn new(addr: SocketAddr, player: GamePlayer) -> Self {
-        Self { player, addr }
+        Self {
+            player,
+            addr,
+            timestamp: Instant::now(),
+        }
     }
 }
 
