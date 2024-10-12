@@ -10,7 +10,7 @@ use ratatui::{
 use crate::{
     logic::Game,
     proto::GameAnnouncement,
-    state::{Player, State},
+    state::{Announcement, Player, State},
 };
 
 use super::grid::Grid;
@@ -44,11 +44,7 @@ fn default_block() -> Block<'static> {
         .border_type(BorderType::Rounded)
 }
 
-fn render_announcements(
-    announcements: &[(SocketAddr, GameAnnouncement)],
-    area: Rect,
-    buf: &mut Buffer,
-) {
+fn render_announcements(announcements: &[Announcement], area: Rect, buf: &mut Buffer) {
     let header =
         Row::new(vec!["Name", "Address", "#", "Size", "Delay", "Open"]).style(Style::new().bold());
 
@@ -63,7 +59,7 @@ fn render_announcements(
 
     let rows: Vec<_> = announcements
         .iter()
-        .map(|(addr, announce)| {
+        .map(|Announcement { announce, addr, .. }| {
             Row::new(vec![
                 format!("{}", announce.game_name),
                 format!("{}", announce.players.players.len()),
