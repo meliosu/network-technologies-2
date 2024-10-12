@@ -9,6 +9,8 @@ pub enum Input {
     Escape,
     Enter,
     NewGame,
+    Join,
+    View,
 }
 
 pub fn read(timeout: Option<Duration>) -> io::Result<Option<Input>> {
@@ -52,6 +54,16 @@ pub fn read(timeout: Option<Duration>) -> io::Result<Option<Input>> {
             code: KeyCode::Char('n'),
             ..
         }) => Some(Input::NewGame),
+
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('j'),
+            ..
+        }) => Some(Input::Join),
+
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('v'),
+            ..
+        }) => Some(Input::View),
 
         _ => None,
     };
