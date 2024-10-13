@@ -5,4 +5,5 @@ pub mod logic;
 pub mod net;
 pub mod proto;
 pub mod state;
+pub mod threads;
 pub mod ui;
