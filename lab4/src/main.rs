@@ -13,11 +13,11 @@ use ratatui::{prelude::CrosstermBackend, Terminal};
 
 use lab4::{
     config::Config,
-    logic::Game,
+    logic::{Game, Snake},
     net::Communicator,
     proto::{
         game_message::{AnnouncementMsg, Type},
-        NodeRole,
+        Direction, NodeRole,
     },
     state::{Announcement, State},
     ui::{self, input::Input},

@@ -43,11 +43,13 @@ impl Direction {
 
 impl Snake {
     pub fn head(&self) -> (usize, usize) {
-        self.body[self.body.len() - 1]
+        //self.body[self.body.len() - 1]
+        self.body[0]
     }
 
     pub fn tail(&self) -> (usize, usize) {
-        self.body[0]
+        //self.body[0]
+        self.body[self.body.len() - 1]
     }
 
     pub fn contains(&self, pos: &(usize, usize)) -> bool {
@@ -189,10 +191,12 @@ impl Game {
                 let (dx, dy) = snake.dir.dxdy();
                 let (next_x, next_y) = self.offset(head_x, head_y, dx, dy);
 
-                snake.body.push((next_x, next_y));
+                //snake.body.push((next_x, next_y));
+                snake.body.insert(0, (next_x, next_y));
 
                 if !self.has_food_at(next_x, next_y) {
-                    snake.body.remove(0);
+                    //snake.body.remove(0);
+                    snake.body.pop();
                 } else {
                     eaten.push((next_x, next_y));
                 }

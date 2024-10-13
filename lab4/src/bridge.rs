@@ -12,65 +12,120 @@ impl From<(usize, usize)> for Coord {
     }
 }
 
+impl From<(i32, i32)> for Coord {
+    fn from((x, y): (i32, i32)) -> Self {
+        Self {
+            x: (x != 0).then_some(x),
+            y: (y != 0).then_some(y),
+        }
+    }
+}
+
 impl Snake {
-    // FIXME: wrapping
     pub fn anchors(&self) -> Vec<Coord> {
+        let mut shifts: Vec<(i32, i32)> = Vec::new();
+
+        for w in self.body.windows(2) {
+            let (x1, y1) = w[0];
+            let (x2, y2) = w[1];
+
+            let temp = ((x2 as i32 - x1 as i32), (y2 as i32 - y1 as i32));
+
+            let shift = match temp {
+                (1, 0) | (0, 1) | (-1, 0) | (0, -1) => temp,
+                (dx, 0) if dx > 0 => (-1, 0),
+                (dx, 0) if dx < 0 => (1, 0),
+                (0, dy) if dy > 0 => (0, -1),
+                (0, dy) if dy < 0 => (0, 1),
+                _ => unreachable!(),
+            };
+
+            shifts.push(shift);
+        }
+
         let mut anchors = Vec::new();
-        anchors.push(self.tail());
+        let head = self.head();
+        anchors.push(head.into());
 
-        for w in self.body.windows(3) {
-            if (w[1].0 == w[0].0 && w[1].0 != w[2].0) || (w[1].1 == w[0].1 && w[1].1 != w[2].1) {
-                anchors.push(w[1]);
+        let mut dx = 0;
+        let mut dy = 0;
+
+        for shift in shifts.iter() {
+            if dx == 0 && dy == 0 {
+                dx = shift.0;
+                dy = shift.1;
+                continue;
             }
+
+            if dx == 0 && shift.0 != 0 || dy == 0 && shift.1 != 0 {
+                anchors.push((dx, dy).into());
+                dx = 0;
+                dy = 0;
+            }
+
+            dx += shift.0;
+            dy += shift.1;
         }
 
-        anchors.push(self.head());
-        anchors.reverse();
-
-        let mut result = Vec::new();
-
-        result.push(Coord {
-            x: Some(anchors[0].0 as i32),
-            y: Some(anchors[0].1 as i32),
-        });
-
-        for w in anchors.windows(2) {
-            let (px, py) = w[0];
-            let (cx, cy) = w[1];
-
-            let dx = cx as i32 - px as i32;
-            let dy = cy as i32 - py as i32;
-
-            result.push(Coord {
-                x: if dx != 0 { Some(dx) } else { None },
-                y: if dy != 0 { Some(dy) } else { None },
-            });
+        if dx != 0 || dy != 0 {
+            anchors.push((dx, dy).into());
         }
 
-        result
+        anchors
     }
 
-    // FIXME: wrapping
-    pub fn body_from_anchors(anchors: Vec<Coord>) -> Vec<(usize, usize)> {
+    pub fn body_from_anchors(
+        anchors: Vec<Coord>,
+        width: usize,
+        height: usize,
+    ) -> Vec<(usize, usize)> {
         let mut body = Vec::new();
 
-        let (mut px, mut py) = (anchors[0].x(), anchors[0].y());
+        let (mut x, mut y) = (anchors[0].x() as usize, anchors[0].y() as usize);
 
-        for coord in anchors.iter().skip(1) {
-            for x in px..px + coord.x() {
-                body.push((x as usize, py as usize));
+        body.push((x, y));
+
+        for shift in anchors.iter().skip(1) {
+            let (cx, cy) = (shift.x(), shift.y());
+
+            if cx != 0 {
+                for _ in 0..cx {
+                    if cx > 0 {
+                        if x == width - 1 {
+                            x = 0;
+                        } else {
+                            x += 1;
+                        }
+                    } else {
+                        if x == 0 {
+                            x = width - 1;
+                        } else {
+                            x -= 1;
+                        }
+                    }
+
+                    body.push((x, y));
+                }
+            } else {
+                for _ in 0..cy {
+                    if cy > 0 {
+                        if y == height - 1 {
+                            y = 0;
+                        } else {
+                            y += 1;
+                        }
+                    } else {
+                        if y == 0 {
+                            y = height - 1;
+                        } else {
+                            y -= 1;
+                        }
+                    }
+
+                    body.push((x, y));
+                }
             }
-
-            for y in py..py + coord.y() {
-                body.push((px as usize, y as usize));
-            }
-
-            px += coord.x();
-            py += coord.y();
         }
-
-        body.push((px as usize, py as usize));
-        body.reverse();
 
         body
     }
