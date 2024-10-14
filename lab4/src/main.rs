@@ -41,8 +41,9 @@ fn main() -> io::Result<()> {
 
     thread::spawn({
         let state = Arc::clone(&state);
+        let comm = Arc::clone(&comm);
         move || {
-            input_thread(state);
+            input_thread(state, comm);
         }
     });
 

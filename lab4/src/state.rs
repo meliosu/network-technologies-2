@@ -1,15 +1,19 @@
 use std::{
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
 use crate::{
     config::Config,
+    id,
     logic::Game,
     proto::{GameAnnouncement, GamePlayer, NodeRole},
 };
 
 pub struct State {
+    pub msg_seq_gen: id::Generator,
+    pub my_id: i32,
+    pub master: SocketAddr,
     pub exited: bool,
     pub config: Config,
     pub role: NodeRole,
@@ -61,6 +65,9 @@ impl Announcement {
 impl State {
     pub fn new() -> Self {
         Self {
+            msg_seq_gen: id::Generator::new(),
+            my_id: 0,
+            master: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
             exited: false,
             config: Config::load("snakes.toml").unwrap_or_default(),
             role: NodeRole::Master,

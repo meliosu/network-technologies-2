@@ -8,7 +8,9 @@ use std::{
 use ratatui::{prelude::CrosstermBackend, Terminal};
 
 use crate::{
+    logic::Game,
     net::Communicator,
+    proto::{game_message::SteerMsg, NodeRole},
     state::{Announcement, State},
     ui::input::Input,
 };
@@ -77,7 +79,7 @@ pub fn announcement_monitor_thread(state: Arc<Mutex<State>>, comm: Arc<Communica
     }
 }
 
-pub fn input_thread(state: Arc<Mutex<State>>) {
+pub fn input_thread(state: Arc<Mutex<State>>, comm: Arc<Communicator>) {
     loop {
         match ui::input::read(None).unwrap() {
             Some(Input::Escape) => {
@@ -86,7 +88,41 @@ pub fn input_thread(state: Arc<Mutex<State>>) {
                 break;
             }
 
+            Some(Input::NewGame) => {
+                let mut state = state.lock().unwrap();
+
+                let mut game = Game::from_cfg(&state.config);
+                game.spawn_snake(0);
+
+                state.role = NodeRole::Master;
+                state.game = Some(game);
+            }
+
+            Some(Input::Turn(direction)) => {
+                let mut state = state.lock().unwrap();
+
+                if state.role == NodeRole::Master {
+                    let id = state.my_id;
+
+                    if let Some(ref mut game) = state.game {
+                        if let Some(ref mut snake) = game.snakes.iter_mut().find(|s| s.id == id) {
+                            snake.update_direction(direction);
+                        }
+                    }
+                } else {
+                    let msgid = state.msg_seq_gen.next();
+                    let addr = state.master;
+
+                    drop(state);
+
+                    comm.send_unicast(&SteerMsg::new(direction, msgid as i64), addr)
+                        .unwrap();
+                }
+            }
+
             _ => {}
         }
     }
 }
+
+pub fn step_thread(state: Arc<Mutex<State>>, comm: Arc<Communicator>) {}
