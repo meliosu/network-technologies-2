@@ -1,17 +1,21 @@
 use std::{
     io,
+    net::SocketAddr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use crossbeam::channel::tick;
+use crossbeam::channel::{tick, Receiver, Sender};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 
 use crate::{
     comm::Communicator,
-    proto::game_message::{AnnouncementMsg, Type},
+    proto::{
+        game_message::{AnnouncementMsg, Type},
+        GameMessage, NodeRole,
+    },
     state::{Announcement, State},
-    ui,
+    ui::{self, input::Input},
 };
 
 const SECOND: Duration = Duration::from_secs(1);
@@ -33,10 +37,23 @@ pub fn ui(state: Arc<Mutex<State>>) -> io::Result<()> {
     Ok(())
 }
 
+pub fn input(channel: Sender<Input>) -> io::Result<()> {
+    loop {
+        if let Some(input) = ui::input::read()? {
+            channel.send(input).unwrap();
+        }
+    }
+}
+
 pub fn announcement_sender(state: Arc<Mutex<State>>, comm: Arc<Communicator>) -> io::Result<()> {
     for _ in tick(SECOND) {
         let announcement = {
             let state = state.lock().unwrap();
+
+            if state.role != NodeRole::Master {
+                continue;
+            }
+
             AnnouncementMsg::new((&state.game).into(), 0)
         };
 
@@ -47,7 +64,7 @@ pub fn announcement_sender(state: Arc<Mutex<State>>, comm: Arc<Communicator>) ->
 }
 
 pub fn announcement_receiver(state: Arc<Mutex<State>>, comm: Arc<Communicator>) -> io::Result<()> {
-    for _ in tick(SECOND) {
+    loop {
         let (msg, addr) = comm.recv_mcast()?;
 
         if let Some(Type::Announcement(announcements)) = msg.r#type {
@@ -64,8 +81,6 @@ pub fn announcement_receiver(state: Arc<Mutex<State>>, comm: Arc<Communicator>) 
             }
         }
     }
-
-    Ok(())
 }
 
 pub fn announcement_reaper(state: Arc<Mutex<State>>) {
@@ -75,5 +90,25 @@ pub fn announcement_reaper(state: Arc<Mutex<State>>) {
         state
             .announcements
             .retain(|_, announcement| announcement.time.elapsed() < 3 * SECOND);
+    }
+}
+
+pub fn ucast_sender(
+    comm: Arc<Communicator>,
+    channel: Receiver<(GameMessage, SocketAddr)>,
+) -> io::Result<()> {
+    loop {
+        let (msg, addr) = channel.recv().unwrap();
+        comm.send_ucast(addr, &msg)?;
+    }
+}
+
+pub fn ucast_receiver(
+    comm: Arc<Communicator>,
+    channel: Sender<(GameMessage, SocketAddr)>,
+) -> io::Result<()> {
+    loop {
+        let (msg, addr) = comm.recv_ucast()?;
+        channel.send((msg, addr)).unwrap();
     }
 }
