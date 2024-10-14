@@ -5,6 +5,8 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub nickname: String,
+    pub name: String,
     pub field: Field,
     pub food: usize,
     pub delay: usize,
@@ -19,6 +21,8 @@ pub struct Field {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            name: String::from("snake-game"),
+            nickname: String::from("player"),
             field: Field {
                 width: 30,
                 height: 40,

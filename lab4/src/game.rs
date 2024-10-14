@@ -2,7 +2,10 @@ use std::{collections::HashMap, net::SocketAddr};
 
 use rand::seq::SliceRandom;
 
-use crate::proto::{Direction, NodeRole};
+use crate::{
+    config::Config,
+    proto::{Direction, NodeRole},
+};
 
 pub struct Game {
     pub name: String,
@@ -13,6 +16,7 @@ pub struct Game {
     pub food: Vec<(usize, usize)>,
     pub snakes: Vec<Snake>,
     pub players: HashMap<i32, Player>,
+    pub turn: usize,
 }
 
 #[derive(Clone)]
@@ -70,6 +74,20 @@ impl Snake {
 }
 
 impl Game {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            name: config.name.clone(),
+            delay: config.delay,
+            width: config.field.width,
+            height: config.field.height,
+            food_const: config.food,
+            food: Vec::new(),
+            snakes: Vec::new(),
+            players: HashMap::new(),
+            turn: 0,
+        }
+    }
+
     pub fn has_snake_at(&self, pos: (usize, usize)) -> bool {
         self.snakes.iter().any(|s| s.contains(pos))
     }
@@ -236,5 +254,6 @@ impl Game {
         self.snakes = moved;
         self.food.retain(|pos| !eaten.contains(pos));
         self.spawn_food((self.snakes.len() + self.food_const).saturating_sub(self.food.len()));
+        self.turn += 1;
     }
 }
