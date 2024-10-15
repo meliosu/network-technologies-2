@@ -1,5 +1,10 @@
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
+};
+
 use crate::{
-    game::{Game, Snake},
+    game::{Game, Player, Snake},
     proto::{
         game_state::{snake::SnakeState, Coord, Snake as ProtoSnake},
         GameAnnouncement, GameConfig, GamePlayer, GamePlayers, GameState, NodeRole, PlayerType,
@@ -132,6 +137,47 @@ impl Snake {
         }
 
         body
+    }
+}
+
+impl Game {
+    pub fn update(&mut self, state: GameState) {
+        self.turn = state.state_order as usize;
+        self.food = state
+            .foods
+            .into_iter()
+            .map(|coord| (coord.x() as usize, coord.y() as usize))
+            .collect();
+        self.snakes = state
+            .snakes
+            .into_iter()
+            .map(|snake| Snake {
+                id: snake.player_id,
+                direction: snake.head_direction(),
+                body: Snake::body_from_anchors(snake.points, self.width, self.height),
+            })
+            .collect();
+        self.players = state
+            .players
+            .players
+            .into_iter()
+            .map(|player| {
+                (
+                    player.id,
+                    Player {
+                        score: player.score as usize,
+                        name: player.name.clone(),
+                        addr: SocketAddr::from_str(&format!(
+                            "{}:{}",
+                            player.ip_address(),
+                            player.port()
+                        ))
+                        .unwrap_or(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0)),
+                        role: player.role(),
+                    },
+                )
+            })
+            .collect();
     }
 }
 
