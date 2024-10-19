@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashMap, net::SocketAddr, time::Instant};
 
 use rand::seq::SliceRandom;
 
@@ -74,6 +74,20 @@ impl Snake {
 }
 
 impl Game {
+    pub fn player_by_addr(&mut self, addr: SocketAddr) -> Option<(i32, &mut Player)> {
+        self.players
+            .iter_mut()
+            .find_map(|(id, p)| if p.addr == addr { Some((*id, p)) } else { None })
+    }
+
+    pub fn snake_by_id(&mut self, id: i32) -> Option<&mut Snake> {
+        self.snakes.iter_mut().find(|s| s.id == id)
+    }
+
+    pub fn free_id(&self) -> i32 {
+        (0..).find(|id| !self.players.contains_key(id)).unwrap()
+    }
+
     pub fn from_config(config: &Config) -> Self {
         Self {
             name: config.name.clone(),
