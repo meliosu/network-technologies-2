@@ -12,6 +12,9 @@ use ratatui::{prelude::CrosstermBackend, Terminal};
 use crate::{
     comm::Communicator,
     game::Game,
+    master::Master,
+    node::Node,
+    normal::Normal,
     proto::{
         game_message::{AnnouncementMsg, Type},
         GameMessage, NodeRole,
@@ -110,175 +113,44 @@ pub fn sender(
     }
 }
 
-pub fn receiver(
-    comm: Arc<Communicator>,
-    channel: Sender<(GameMessage, SocketAddr)>,
-) -> io::Result<()> {
-    loop {
-        let (msg, addr) = comm.recv_ucast()?;
-        channel.send((msg, addr)).unwrap();
-    }
-}
-
-pub fn master_sender(
-    comm: Arc<Communicator>,
-    state: Arc<Mutex<State>>,
-    channel: Receiver<GameMessage>,
-) -> io::Result<()> {
-    Ok(())
-}
-
 pub fn main_thread(
     comm: Arc<Communicator>,
     state: Arc<Mutex<State>>,
     msg_channel: Receiver<(GameMessage, SocketAddr)>,
     input_channel: Receiver<Input>,
-    master_channel: Sender<GameMessage>,
 ) -> io::Result<()> {
-    let handle_message_master = |(msg, addr): (GameMessage, SocketAddr)| {
-        if let Some(r#type) = msg.r#type {
-            match r#type {
-                Type::Ping(ping_msg) => {
-                    let mut state = state.lock().unwrap();
-                    state.active.insert(addr, Instant::now());
-                }
-
-                Type::Steer(steer_msg) => {
-                    let mut state = state.lock().unwrap();
-
-                    if let Some((id, _)) = state.game.player_by_addr(addr) {
-                        if let Some(snake) = state.game.snake_by_id(id) {
-                            snake.turn(steer_msg.direction());
-                        }
-                    }
-                }
-
-                Type::Ack(ack_msg) => todo!(),
-
-                Type::State(state_msg) => {
-                    // ignore on master
-                }
-
-                Type::Announcement(announcement_msg) => {
-                    // ignore on ucast socket
-                }
-
-                Type::Join(join_msg) => {
-                    let mut state = state.lock().unwrap();
-                    let id = state.game.free_id();
-
-                    if state.game.spawn_snake(id) {
-                        // success
-
-                        todo!()
-                    } else {
-                        // failure
-
-                        todo!()
-                    }
-                }
-
-                Type::Error(error_msg) => {
-                    // ignore on master
-                }
-
-                Type::RoleChange(role_change_msg) => {
-                    // ignore on alive master
-                }
-
-                Type::Discover(discover_msg) => {
-                    todo!()
-                }
-            }
-        }
-    };
-
-    let handle_input_master = |input: Input| match input {
-        Input::Turn(direction) => {
-            let mut state = state.lock().unwrap();
-            let id = state.id;
-
-            if let Some(snake) = state.game.snakes.iter_mut().find(|s| s.id == id) {
-                snake.turn(direction);
-            }
-        }
-
-        Input::Escape => {
-            let mut state = state.lock().unwrap();
-            state.exited = true;
-        }
-
-        Input::New => {
-            let mut state = state.lock().unwrap();
-            state.game = Game::from_config(&state.config);
-            state.id = 0;
-            state.game.spawn_snake(0);
-        }
-
-        Input::Join => {
-            let mut state = state.lock().unwrap();
-            *state = State::new();
-            state.role = NodeRole::Normal;
-
-            todo!();
-        }
-
-        Input::View => {
-            let mut state = state.lock().unwrap();
-            *state = State::new();
-            state.role = NodeRole::Viewer;
-
-            todo!();
-        }
-    };
-
-    let handle_input_normal = |input: Input| match input {
-        Input::Turn(direction) => {
-            todo!()
-        }
-
-        Input::Escape => {
-            let mut state = state.lock().unwrap();
-            state.exited = true;
-        }
-
-        Input::New => {
-            let mut state = state.lock().unwrap();
-            state.game = Game::from_config(&state.config);
-            state.id = 0;
-            state.game.spawn_snake(0);
-            state.role = NodeRole::Master;
-        }
-
-        Input::Join => {
-            let mut state = state.lock().unwrap();
-            *state = State::new();
-            state.role = NodeRole::Normal;
-
-            todo!();
-        }
-
-        Input::View => {
-            let mut state = state.lock().unwrap();
-            *state = State::new();
-            state.role = NodeRole::Viewer;
-
-            todo!();
-        }
-    };
-
     loop {
-        let state = state.lock().unwrap();
+        let curr_state = state.lock().unwrap();
+        let role = curr_state.role;
+        drop(curr_state);
 
-        if state.role == NodeRole::Master {
+        if role == NodeRole::Master {
+            let mut master = Master::new(state.clone(), comm.clone());
+
             crossbeam::select! {
-                recv(msg_channel) -> msg => handle_message_master(msg.unwrap()),
-                recv(input_channel) -> input => handle_input_master(input.unwrap()),
+                recv(msg_channel) -> msg => {
+                    let (msg, addr) = msg.unwrap();
+                    master.handle_message((msg, addr));
+                }
+
+                recv(input_channel) -> input => {
+                    let input = input.unwrap();
+                    master.handle_input(input);
+                }
             }
         } else {
+            let mut normal = Normal::new(state.clone(), comm.clone());
+
             crossbeam::select! {
-                recv(msg_channel) -> msg => handle_message_normal(msg.unwrap()),
-                recv(input_channel) -> input => handle_input_normal(input.unwrap()),
+                recv(msg_channel) -> msg => {
+                    let (msg, addr) = msg.unwrap();
+                    normal.handle_message((msg, addr));
+                }
+
+                recv(input_channel) -> input => {
+                    let input = input.unwrap();
+                    normal.handle_input(input);
+                }
             }
         }
     }
