@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod comm;
 pub mod config;
 pub mod game;
+pub mod id;
 pub mod node;
 pub mod proto;
 pub mod state;

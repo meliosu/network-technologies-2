@@ -5,13 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossbeam::channel::{tick, Receiver, Sender};
+use crossbeam::channel::{tick, Sender};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 
 use crate::{
     comm::Communicator,
-    node::Node,
-    proto::{game_message::Type, GameMessage, NodeRole},
+    proto::{game_message::Type, GameMessage},
     state::State,
     ui::{self, input::Input},
 };
@@ -26,6 +25,10 @@ pub fn ui(state: State) -> io::Result<()> {
 
     for _ in tick(SECOND / 50) {
         let state = state.lock();
+
+        if state.exited {
+            break;
+        }
 
         term.draw(|frame| ui::view::render(frame, &state))?;
     }

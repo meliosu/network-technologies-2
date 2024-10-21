@@ -8,8 +8,8 @@ pub enum Input {
     Turn(Direction),
     Escape,
     New,
-    Join,
-    View,
+    Join(usize),
+    View(usize),
 }
 
 pub fn read() -> io::Result<Option<Input>> {
@@ -46,12 +46,12 @@ pub fn read() -> io::Result<Option<Input>> {
         Event::Key(KeyEvent {
             code: KeyCode::Char('j'),
             ..
-        }) => Some(Input::Join),
+        }) => Some(Input::Join(0)),
 
         Event::Key(KeyEvent {
             code: KeyCode::Char('v'),
             ..
-        }) => Some(Input::View),
+        }) => Some(Input::View(0)),
 
         _ => None,
     };
