@@ -1,4 +1,7 @@
-use std::{net::SocketAddr, time::Instant};
+use std::{
+    net::SocketAddr,
+    time::{Duration, Instant},
+};
 
 use crossbeam::channel::Receiver;
 
@@ -26,8 +29,8 @@ pub struct Node {
     comm: Communicator,
     message_channel: Receiver<(GameMessage, SocketAddr)>,
     input_channel: Receiver<Input>,
-    turn_channel: Receiver<Instant>,
-    interval_channel: Receiver<Instant>,
+    turn_channel: Receiver<Duration>,
+    interval_channel: Receiver<Duration>,
     seq_gen: Generator,
     peer_msgs: Vec<PeerMessage>,
     master_msgs: Vec<MasterMessage>,
@@ -39,8 +42,8 @@ impl Node {
         comm: Communicator,
         message_channel: Receiver<(GameMessage, SocketAddr)>,
         input_channel: Receiver<Input>,
-        turn_channel: Receiver<Instant>,
-        interval_channel: Receiver<Instant>,
+        turn_channel: Receiver<Duration>,
+        interval_channel: Receiver<Duration>,
     ) -> Self {
         Self {
             state,
@@ -60,8 +63,8 @@ impl Node {
             crossbeam::select! {
                 recv(self.message_channel) -> msg => self.handle_message(msg.unwrap()),
                 recv(self.input_channel) -> input => self.handle_input(input.unwrap()),
-                recv(self.turn_channel) -> _ => self.on_turn(),
-                recv(self.interval_channel) -> _ => self.on_interval(),
+                recv(self.turn_channel) -> turn => self.on_turn(turn.unwrap()),
+                recv(self.interval_channel) -> interval => self.on_interval(interval.unwrap()),
             }
         }
     }
@@ -156,11 +159,11 @@ impl Node {
         }
     }
 
-    fn on_turn(&mut self) {
+    fn on_turn(&mut self, turn: Duration) {
         todo!()
     }
 
-    fn on_interval(&mut self) {
+    fn on_interval(&mut self, interval: Duration) {
         todo!()
     }
 

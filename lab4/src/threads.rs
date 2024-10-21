@@ -82,18 +82,18 @@ pub fn ucast_receiver(comm: Communicator, channel: Sender<(GameMessage, SocketAd
     }
 }
 
-pub fn turn_tick(state: State, channel: Sender<Instant>) {
+pub fn turn_tick(state: State, channel: Sender<Duration>) {
     loop {
         let delay = state.delay();
         thread::sleep(delay);
-        channel.send(Instant::now()).unwrap();
+        channel.send(delay).unwrap();
     }
 }
 
-pub fn interval_tick(state: State, channel: Sender<Instant>) {
+pub fn interval_tick(state: State, channel: Sender<Duration>) {
     loop {
-        let delay = state.delay();
+        let delay = state.delay() / 10;
         thread::sleep(delay);
-        channel.send(Instant::now()).unwrap();
+        channel.send(delay).unwrap();
     }
 }
