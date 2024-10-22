@@ -46,7 +46,7 @@ mod comm {
     use std::{
         io,
         net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
-        os::fd::{AsFd, AsRawFd, FromRawFd},
+        os::fd::{AsRawFd, FromRawFd},
     };
 
     use prost::Message;

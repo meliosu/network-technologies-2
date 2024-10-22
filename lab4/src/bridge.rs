@@ -28,8 +28,6 @@ impl From<(usize, usize)> for Coord {
 
 impl Snake {
     pub fn body_to_anchors(&self) -> Vec<Coord> {
-        //return self.body.iter().map(|&pos| pos.into()).collect();
-
         let mut shifts: Vec<(i32, i32)> = Vec::new();
 
         for w in self.body.windows(2) {
@@ -90,11 +88,6 @@ impl Snake {
         width: usize,
         height: usize,
     ) -> Vec<(usize, usize)> {
-        //return anchors
-        //    .into_iter()
-        //    .map(|coord| (coord.x() as usize, coord.y() as usize))
-        //    .collect();
-
         let mut body = Vec::new();
 
         let (mut x, mut y) = (anchors[0].x() as usize, anchors[0].y() as usize);

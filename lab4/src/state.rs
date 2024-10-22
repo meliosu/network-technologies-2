@@ -1,13 +1,10 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr},
-    os::linux::raw::stat,
-    str::FromStr,
+    net::SocketAddr,
     sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
 use inner::Announcement;
-use socket2::Socket;
 
 use crate::{
     game::Player,
@@ -256,7 +253,7 @@ impl State {
         })
     }
 
-    pub fn change_role(&self, msg: RoleChangeMsg, addr: SocketAddr) {
+    pub fn change_role(&self, msg: RoleChangeMsg, _addr: SocketAddr) {
         let mut state = self.lock();
         state.role = msg.receiver_role();
     }
@@ -264,7 +261,7 @@ impl State {
     pub fn choose_deputy(&self) -> Option<SocketAddr> {
         let mut state = self.lock();
 
-        state.game.players.iter_mut().find_map(|(_id, player)| {
+        state.game.players.iter_mut().find_map(|(_, player)| {
             if player.role == NodeRole::Viewer || player.role == NodeRole::Normal {
                 player.role = NodeRole::Deputy;
                 Some(player.addr)

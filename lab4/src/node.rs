@@ -120,21 +120,10 @@ impl Node {
                 }
             }
 
-            Type::Ping(_) => {
-                // ignore
-            }
-
-            Type::Announcement(_) => {
-                // ignore
-            }
-
-            Type::Error(_) => {
-                // ignore
-            }
-
-            Type::Discover(_) => {
-                // ignore
-            }
+            Type::Ping(_) => {}
+            Type::Announcement(_) => {}
+            Type::Error(_) => {}
+            Type::Discover(_) => {}
         }
     }
 
@@ -208,18 +197,14 @@ impl Node {
 
     fn on_interval(&mut self, interval: Duration) {
         for msg in &self.peer_msgs {
-            if msg.time.elapsed() > 8 * interval {
-                // todo
-            } else if msg.time.elapsed() > interval {
+            if msg.time.elapsed() > interval {
                 self.oneshot_send(msg.msg.clone(), msg.addr);
             }
         }
 
         if let Some(master) = self.state.master() {
             for msg in &self.master_msgs {
-                if msg.time.elapsed() > 8 * interval {
-                    // todo
-                } else if msg.time.elapsed() > interval {
+                if msg.time.elapsed() > interval {
                     self.oneshot_send(msg.msg.clone(), master);
                 }
             }
@@ -288,7 +273,7 @@ impl Node {
             if time.elapsed() > interval {
                 let mut state = self.state.lock();
 
-                if let Some((id, player)) = state.game.player_by_addr(*addr) {
+                if let Some((_, player)) = state.game.player_by_addr(*addr) {
                     player.role = NodeRole::Viewer;
                 }
             }
@@ -313,7 +298,7 @@ impl Node {
                     let mut state = self.state.lock();
                     state.role = NodeRole::Master;
 
-                    if let Some((id, player)) = state.game.player_by_addr(self.comm.ucast_addr()) {
+                    if let Some((_, player)) = state.game.player_by_addr(self.comm.ucast_addr()) {
                         player.role = NodeRole::Master;
                     }
 
