@@ -1,9 +1,4 @@
-use std::{
-    io,
-    net::SocketAddr,
-    thread,
-    time::{Duration, Instant},
-};
+use std::{io, net::SocketAddr, thread, time::Duration};
 
 use crossbeam::channel::{tick, Sender};
 use ratatui::{prelude::CrosstermBackend, Terminal};

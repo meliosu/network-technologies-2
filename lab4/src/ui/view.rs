@@ -24,7 +24,7 @@ pub fn render(frame: &mut Frame, state: &State) {
     let [leaderboard, info] = Layout::horizontal(constraints).areas(right_top);
 
     let buf = frame.buffer_mut();
-    render_game(Some(&state.game), left, buf);
+    render_game(Some(&state.game), state, left, buf);
     render_announcements(&state.announcements, announcements, buf);
     render_leaderboard(&state.game.players, leaderboard, buf);
     render_info(Some(&state.game), info, buf);
@@ -104,15 +104,21 @@ fn render_info(game: Option<&Game>, area: Rect, buf: &mut Buffer) {
     }
 }
 
-fn render_game(game: Option<&Game>, area: Rect, buf: &mut Buffer) {
+fn render_game(game: Option<&Game>, state: &State, area: Rect, buf: &mut Buffer) {
     let block = default_block().title("Game");
 
     if let Some(game) = game {
         let mut grid = Grid::new(game.width, game.height);
 
         for snake in &game.snakes {
+            let color = if state.id == snake.id {
+                Color::Green
+            } else {
+                Color::Red
+            };
+
             for &pos in &snake.body {
-                grid.set(pos, Color::Red);
+                grid.set(pos, color);
             }
         }
 

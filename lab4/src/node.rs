@@ -73,6 +73,8 @@ impl Node {
     }
 
     fn handle_message(&mut self, (msg, addr): (GameMessage, SocketAddr)) {
+        let receiver_id = msg.receiver_id();
+
         let Some(r#type) = msg.r#type else {
             return;
         };
@@ -89,6 +91,13 @@ impl Node {
             }
 
             Type::Ack(_) => {
+                if role != NodeRole::Master {
+                    if receiver_id != 0 {
+                        let mut state = self.state.lock();
+                        state.id = receiver_id;
+                    }
+                }
+
                 self.ack(msg.msg_seq);
             }
 
@@ -197,6 +206,10 @@ impl Node {
 
     fn on_interval(&mut self, interval: Duration) {
         for msg in &self.peer_msgs {
+            if msg.time.elapsed() > interval * 8 {
+                continue;
+            }
+
             if msg.time.elapsed() > interval {
                 self.oneshot_send(msg.msg.clone(), msg.addr);
             }
@@ -204,6 +217,10 @@ impl Node {
 
         if let Some(master) = self.state.master() {
             for msg in &self.master_msgs {
+                if msg.time.elapsed() > interval * 8 {
+                    continue;
+                }
+
                 if msg.time.elapsed() > interval {
                     self.oneshot_send(msg.msg.clone(), master);
                 }
@@ -272,6 +289,16 @@ impl Node {
         for (addr, time) in &self.active {
             if time.elapsed() > interval {
                 let mut state = self.state.lock();
+
+                if let Some(id) = state.game.players.iter().find_map(|(id, player)| {
+                    if player.addr == *addr {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                }) {
+                    state.game.players.remove(&id);
+                }
 
                 if let Some((_, player)) = state.game.player_by_addr(*addr) {
                     player.role = NodeRole::Viewer;
