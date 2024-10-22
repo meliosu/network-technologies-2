@@ -36,21 +36,28 @@ impl Communicator {
     pub fn recv_ucast(&self) -> io::Result<(GameMessage, SocketAddr)> {
         self.inner.recv_ucast()
     }
+
+    pub fn ucast_addr(&self) -> SocketAddr {
+        self.inner.ucast_addr()
+    }
 }
 
 mod comm {
     use std::{
         io,
-        net::{SocketAddr, ToSocketAddrs, UdpSocket},
+        net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
+        os::fd::{AsFd, AsRawFd, FromRawFd},
     };
 
     use prost::Message;
+    use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
     use crate::proto::GameMessage;
 
     pub struct Communicator {
         mcast: UdpSocket,
         ucast: UdpSocket,
+        mcast_addr: SocketAddr,
     }
 
     impl Communicator {
@@ -59,16 +66,39 @@ mod comm {
             A: ToSocketAddrs,
         {
             let multiaddr = multiaddr.to_socket_addrs()?.next().unwrap();
-            let mcast = UdpSocket::bind(multiaddr)?;
-            mcast.connect(multiaddr)?;
 
+            let IpAddr::V4(ipv4) = multiaddr.ip() else {
+                panic!("uwuwu");
+            };
+
+            let mcast_addr = SockAddr::from(multiaddr);
+
+            let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+            socket.set_reuse_address(true)?;
+            socket.bind(&mcast_addr)?;
+            socket.join_multicast_v4(&ipv4, &Ipv4Addr::UNSPECIFIED)?;
+
+            let fd = socket.as_raw_fd();
+            std::mem::forget(socket);
+
+            let mcast = unsafe { UdpSocket::from_raw_fd(fd) };
             let ucast = UdpSocket::bind("0.0.0.0:0")?;
 
-            Ok(Self { ucast, mcast })
+            Ok(Self {
+                ucast,
+                mcast,
+                mcast_addr: multiaddr,
+            })
+        }
+
+        pub fn ucast_addr(&self) -> SocketAddr {
+            self.ucast.local_addr().unwrap()
         }
 
         pub fn send_mcast(&self, msg: &GameMessage) -> io::Result<()> {
-            self.mcast.send(&msg.encode_to_vec()).map(|_| ())
+            self.ucast
+                .send_to(&msg.encode_to_vec(), self.mcast_addr)
+                .map(|_| ())
         }
 
         pub fn send_ucast(&self, addr: SocketAddr, msg: &GameMessage) -> io::Result<()> {

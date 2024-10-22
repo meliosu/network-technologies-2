@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     net::SocketAddr,
     time::{Duration, Instant},
 };
@@ -34,6 +35,7 @@ pub struct Node {
     seq_gen: Generator,
     peer_msgs: Vec<PeerMessage>,
     master_msgs: Vec<MasterMessage>,
+    active: HashMap<SocketAddr, Instant>,
 }
 
 impl Node {
@@ -55,6 +57,7 @@ impl Node {
             seq_gen: Generator::new(),
             peer_msgs: Vec::new(),
             master_msgs: Vec::new(),
+            active: HashMap::new(),
         }
     }
 
@@ -74,34 +77,53 @@ impl Node {
             return;
         };
 
+        self.active.insert(addr, Instant::now());
+
         let role = self.state.role();
 
         match r#type {
-            Type::Ping(ping_msg) => todo!(),
+            Type::Steer(steer_msg) => {
+                if role == NodeRole::Master {
+                    self.state.turn_snake_by_addr(addr, steer_msg.direction());
+                }
+            }
 
-            Type::Steer(steer_msg) => if role == NodeRole::Master {},
-
-            Type::Ack(ack_msg) => todo!(),
+            Type::Ack(_) => {
+                self.ack(msg.msg_seq);
+            }
 
             Type::State(state_msg) => {
                 if role != NodeRole::Master {
-                    todo!()
+                    self.state.update(state_msg.state);
                 }
             }
 
             Type::RoleChange(role_change_msg) => {
                 if role == NodeRole::Master {
-                    todo!()
+                    self.state.change_role(role_change_msg, addr);
                 }
             }
 
-            Type::Join(_join_msg) => {
+            Type::Join(join_msg) => {
                 if role == NodeRole::Master {
-                    todo!()
+                    if join_msg.requested_role() == NodeRole::Viewer {
+                        let id = self.state.add_viewer(join_msg, addr);
+                        self.oneshot_send(AckMsg::new(None, Some(id), msg.msg_seq), addr);
+                    } else {
+                        if let Some(id) = self.state.add_normal(join_msg, addr) {
+                            self.oneshot_send(AckMsg::new(None, Some(id), msg.msg_seq), addr);
+                        } else {
+                            unimplemented!()
+                        }
+                    }
                 }
             }
 
-            Type::Announcement(announcement_msg) => {
+            Type::Ping(_) => {
+                // ignore
+            }
+
+            Type::Announcement(_) => {
                 // ignore
             }
 
@@ -133,7 +155,8 @@ impl Node {
             }
 
             Input::New => {
-                self.state.new_master();
+                let addr = self.comm.ucast_addr();
+                self.state.new_master(addr);
                 self.clean_messages();
             }
 
@@ -142,7 +165,13 @@ impl Node {
                     self.clean_messages();
                     self.state.new_normal();
                     let name = self.state.player_name();
-                    let join = JoinMsg::new(name, announcement.game_name, NodeRole::Normal, 0);
+                    let join = JoinMsg::new(
+                        name,
+                        announcement.game_name,
+                        NodeRole::Normal,
+                        self.free_seq(),
+                    );
+
                     self.send_to_addr(join, addr);
                 }
             }
@@ -152,28 +181,60 @@ impl Node {
                     self.clean_messages();
                     self.state.new_viewer();
                     let name = self.state.player_name();
-                    let join = JoinMsg::new(name, announcement.game_name, NodeRole::Normal, 0);
+                    let join = JoinMsg::new(
+                        name,
+                        announcement.game_name,
+                        NodeRole::Normal,
+                        self.free_seq(),
+                    );
+
                     self.send_to_addr(join, addr);
                 }
             }
         }
     }
 
-    fn on_turn(&mut self, turn: Duration) {
-        todo!()
+    fn on_turn(&mut self, _turn: Duration) {
+        let role = self.state.role();
+
+        if role == NodeRole::Master {
+            self.state.step();
+            let game_state = self.state.get_game_state();
+            let seq = self.free_seq();
+            self.broadcast(StateMsg::new(game_state, seq));
+        }
     }
 
     fn on_interval(&mut self, interval: Duration) {
-        todo!()
+        for msg in &self.peer_msgs {
+            if msg.time.elapsed() > 8 * interval {
+                // todo
+            } else if msg.time.elapsed() > interval {
+                self.oneshot_send(msg.msg.clone(), msg.addr);
+            }
+        }
+
+        if let Some(master) = self.state.master() {
+            for msg in &self.master_msgs {
+                if msg.time.elapsed() > 8 * interval {
+                    // todo
+                } else if msg.time.elapsed() > interval {
+                    self.oneshot_send(msg.msg.clone(), master);
+                }
+            }
+        }
+
+        self.check_dead_nodes();
     }
 
     fn send_to_master(&mut self, msg: GameMessage) {
-        let master = self.state.master();
-        self.comm.send_ucast(master, &msg).unwrap();
-        self.master_msgs.push(MasterMessage {
-            time: Instant::now(),
-            msg,
-        });
+        if let Some(master) = self.state.master() {
+            self.comm.send_ucast(master, &msg).unwrap();
+            self.master_msgs.push(MasterMessage {
+                time: Instant::now(),
+                msg,
+            });
+        }
     }
 
     fn send_to_addr(&mut self, msg: GameMessage, addr: SocketAddr) {
@@ -185,6 +246,16 @@ impl Node {
         });
     }
 
+    fn oneshot_send(&self, msg: GameMessage, addr: SocketAddr) {
+        self.comm.send_ucast(addr, &msg).unwrap();
+    }
+
+    fn broadcast(&mut self, msg: GameMessage) {
+        for addr in self.state.get_addresses() {
+            self.send_to_addr(msg.clone(), addr);
+        }
+    }
+
     fn free_seq(&mut self) -> i64 {
         self.seq_gen.next()
     }
@@ -192,5 +263,42 @@ impl Node {
     fn clean_messages(&mut self) {
         self.peer_msgs = Vec::new();
         self.master_msgs = Vec::new();
+        self.active = HashMap::new();
+    }
+
+    fn ack(&mut self, seq: i64) {
+        if let Some(idx) = self.peer_msgs.iter().position(|msg| msg.msg.msg_seq == seq) {
+            self.peer_msgs.remove(idx);
+        }
+
+        if let Some(idx) = self
+            .master_msgs
+            .iter()
+            .position(|msg| msg.msg.msg_seq == seq)
+        {
+            self.master_msgs.remove(idx);
+        }
+    }
+
+    fn check_dead_nodes(&mut self) {
+        // todo
+
+        let role = self.state.role();
+
+        match role {
+            NodeRole::Master => {
+                // todo
+            }
+
+            NodeRole::Normal => {
+                // todo
+            }
+
+            NodeRole::Deputy => {
+                // todo
+            }
+
+            NodeRole::Viewer => {}
+        }
     }
 }

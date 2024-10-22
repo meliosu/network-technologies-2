@@ -59,14 +59,14 @@ fn render_announcements(
         .map(|(addr, Announcement { announcement, .. })| {
             Row::new(vec![
                 format!("{}", announcement.game_name),
-                format!("{}", announcement.players.players.len()),
                 format!("{}", addr),
+                format!("{}", announcement.players.players.len()),
                 format!(
                     "{}x{}",
                     announcement.config.width(),
                     announcement.config.height()
                 ),
-                format!("{}", announcement.config.food_static()),
+                format!("{}", announcement.config.state_delay_ms()),
                 format!(
                     "{}",
                     if announcement.can_join() {

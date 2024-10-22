@@ -4,7 +4,7 @@ use lab4::{comm::Communicator, node::Node, state::State, threads};
 
 fn main() {
     let state = State::new();
-    let comm = Communicator::new("240.0.0.1").unwrap();
+    let comm = Communicator::new("239.1.1.1:8000").unwrap();
 
     let (ucast_tx, ucast_rx) = crossbeam::channel::unbounded();
     let (input_tx, input_rx) = crossbeam::channel::unbounded();

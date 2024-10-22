@@ -1,13 +1,18 @@
 use std::{
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
     sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
 use inner::Announcement;
 
-use crate::proto::{
-    game_message::AnnouncementMsg, Direction, GameAnnouncement, GameMessage, NodeRole,
+use crate::{
+    game::Player,
+    proto::{
+        game_message::{AnnouncementMsg, JoinMsg, RoleChangeMsg},
+        Direction, GameAnnouncement, GameMessage, GameState, NodeRole,
+    },
 };
 
 #[derive(Clone)]
@@ -95,10 +100,20 @@ impl State {
             .map(|(addr, announcement)| (*addr, announcement.announcement.clone()))
     }
 
-    pub fn new_master(&self) {
+    pub fn new_master(&self, addr: SocketAddr) {
         let mut state = self.lock();
         *state = inner::State::new();
+        let name = state.config.nickname.clone();
         state.game.spawn_snake(0);
+        state.game.players.insert(
+            0,
+            Player {
+                score: 0,
+                name,
+                addr,
+                role: NodeRole::Master,
+            },
+        );
     }
 
     pub fn new_normal(&self) {
@@ -115,23 +130,116 @@ impl State {
 
     pub fn player_name(&self) -> String {
         let state = self.lock();
-        state.config.name.clone()
+        state.config.nickname.clone()
     }
 
-    pub fn master(&self) -> SocketAddr {
+    pub fn master(&self) -> Option<SocketAddr> {
+        let state = self.lock();
+        state.game.players.iter().find_map(|(_, p)| {
+            if p.role == NodeRole::Master {
+                Some(p.addr)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn turn_snake_by_addr(&self, addr: SocketAddr, direction: Direction) {
+        let mut state = self.lock();
+
+        let Some((id, _)) = state.game.player_by_addr(addr) else {
+            println!("didn't find player");
+            return;
+        };
+
+        let Some(snake) = state.game.snake_by_id(id) else {
+            println!("didn't find snake");
+            return;
+        };
+
+        snake.turn(direction);
+    }
+
+    pub fn add_normal(&self, msg: JoinMsg, addr: SocketAddr) -> Option<i32> {
+        let mut state = self.lock();
+        let id = state.game.free_id();
+
+        if state.game.spawn_snake(id) {
+            let role = if !state
+                .game
+                .players
+                .iter()
+                .any(|(_, p)| p.role == NodeRole::Deputy)
+            {
+                NodeRole::Normal
+            } else {
+                NodeRole::Deputy
+            };
+
+            state.game.players.insert(
+                id,
+                Player {
+                    score: 0,
+                    name: msg.player_name,
+                    addr,
+                    role,
+                },
+            );
+
+            Some(id)
+        } else {
+            None
+        }
+    }
+
+    pub fn add_viewer(&self, msg: JoinMsg, addr: SocketAddr) -> i32 {
+        let mut state = self.lock();
+        let id = state.game.free_id();
+
+        state.game.players.insert(
+            id,
+            Player {
+                score: 0,
+                name: msg.player_name,
+                addr,
+                role: NodeRole::Viewer,
+            },
+        );
+
+        id
+    }
+
+    pub fn change_role(&self, msg: RoleChangeMsg, addr: SocketAddr) {}
+
+    pub fn update(&self, state_msg: GameState) {
+        let mut state = self.lock();
+        state.game.update(state_msg);
+    }
+
+    pub fn get_game_state(&self) -> GameState {
+        let state = self.lock();
+        GameState::from(&state.game)
+    }
+
+    pub fn get_addresses(&self) -> Vec<SocketAddr> {
         let state = self.lock();
         state
             .game
             .players
-            .iter()
-            .find_map(|(_, p)| {
-                if p.role == NodeRole::Master {
+            .values()
+            .filter_map(|p| {
+                if p.role != NodeRole::Master {
                     Some(p.addr)
                 } else {
                     None
                 }
             })
-            .unwrap()
+            .collect()
+    }
+
+    pub fn step(&self) {
+        let mut state = self.lock();
+        state.game.step();
     }
 }
 
