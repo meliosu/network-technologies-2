@@ -1,11 +1,13 @@
 use std::{
     net::{Ipv4Addr, SocketAddr},
+    os::linux::raw::stat,
     str::FromStr,
     sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
 use inner::Announcement;
+use socket2::Socket;
 
 use crate::{
     game::Player,
@@ -148,7 +150,7 @@ impl State {
         let mut state = self.lock();
 
         let Some((id, _)) = state.game.player_by_addr(addr) else {
-            println!("didn't find player");
+            println!("didn't find player with addr {addr}");
             return;
         };
 
@@ -165,7 +167,7 @@ impl State {
         let id = state.game.free_id();
 
         if state.game.spawn_snake(id) {
-            let role = if !state
+            let role = if state
                 .game
                 .players
                 .iter()
@@ -209,11 +211,13 @@ impl State {
         id
     }
 
-    pub fn change_role(&self, msg: RoleChangeMsg, addr: SocketAddr) {}
-
-    pub fn update(&self, state_msg: GameState) {
+    pub fn update(&self, state_msg: GameState, addr: SocketAddr) {
         let mut state = self.lock();
         state.game.update(state_msg);
+
+        if let Some((_, player)) = state.game.player_by_addr(addr) {
+            state.role = player.role;
+        }
     }
 
     pub fn get_game_state(&self) -> GameState {
@@ -240,6 +244,31 @@ impl State {
     pub fn step(&self) {
         let mut state = self.lock();
         state.game.step();
+    }
+
+    pub fn deputy(&self) -> Option<SocketAddr> {
+        let state = self.lock();
+
+        state.game.players.iter().find_map(|(_, player)| {
+            if player.role == NodeRole::Deputy {
+                Some(player.addr)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn choose_deputy(&self) -> Option<SocketAddr> {
+        let mut state = self.lock();
+
+        state.game.players.iter_mut().find_map(|(_id, player)| {
+            if player.role == NodeRole::Viewer || player.role == NodeRole::Normal {
+                player.role = NodeRole::Deputy;
+                Some(player.addr)
+            } else {
+                None
+            }
+        })
     }
 }
 

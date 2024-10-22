@@ -26,6 +26,7 @@ pub struct Snake {
     pub body: Vec<(usize, usize)>,
 }
 
+#[derive(Debug)]
 pub struct Player {
     pub score: usize,
     pub name: String,
@@ -87,8 +88,7 @@ impl Game {
     pub fn free_id(&self) -> i32 {
         (0..)
             .find(|id| {
-                !self.players.contains_key(id)
-                    && !self.snakes.iter().find(|s| s.id == *id).is_none()
+                !self.players.contains_key(id) && self.snakes.iter().find(|s| s.id == *id).is_none()
             })
             .unwrap()
     }

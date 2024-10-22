@@ -68,7 +68,7 @@ mod comm {
             let multiaddr = multiaddr.to_socket_addrs()?.next().unwrap();
 
             let IpAddr::V4(ipv4) = multiaddr.ip() else {
-                panic!("uwuwu");
+                panic!("not ipv4");
             };
 
             let mcast_addr = SockAddr::from(multiaddr);
@@ -82,7 +82,7 @@ mod comm {
             std::mem::forget(socket);
 
             let mcast = unsafe { UdpSocket::from_raw_fd(fd) };
-            let ucast = UdpSocket::bind("0.0.0.0:0")?;
+            let ucast = UdpSocket::bind("192.168.75.143:0")?;
 
             Ok(Self {
                 ucast,

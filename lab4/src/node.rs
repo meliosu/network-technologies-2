@@ -94,13 +94,13 @@ impl Node {
 
             Type::State(state_msg) => {
                 if role != NodeRole::Master {
-                    self.state.update(state_msg.state);
+                    self.state.update(state_msg.state, self.comm.ucast_addr());
                 }
             }
 
             Type::RoleChange(role_change_msg) => {
                 if role == NodeRole::Master {
-                    self.state.change_role(role_change_msg, addr);
+                    //self.state.change_role(role_change_msg, addr);
                 }
             }
 
@@ -110,11 +110,11 @@ impl Node {
                         let id = self.state.add_viewer(join_msg, addr);
                         self.oneshot_send(AckMsg::new(None, Some(id), msg.msg_seq), addr);
                     } else {
-                        if let Some(id) = self.state.add_normal(join_msg, addr) {
-                            self.oneshot_send(AckMsg::new(None, Some(id), msg.msg_seq), addr);
-                        } else {
+                        let Some(id) = self.state.add_normal(join_msg, addr) else {
                             unimplemented!()
-                        }
+                        };
+
+                        self.oneshot_send(AckMsg::new(None, Some(id), msg.msg_seq), addr);
                     }
                 }
             }
@@ -224,7 +224,7 @@ impl Node {
             }
         }
 
-        self.check_dead_nodes();
+        self.check_dead_nodes(interval * 8);
     }
 
     fn send_to_master(&mut self, msg: GameMessage) {
@@ -280,24 +280,51 @@ impl Node {
         }
     }
 
-    fn check_dead_nodes(&mut self) {
-        // todo
-
+    fn check_dead_nodes(&mut self, interval: Duration) {
         let role = self.state.role();
+
+        for (addr, time) in &self.active {
+            if time.elapsed() > interval {
+                let mut state = self.state.lock();
+
+                if let Some((id, player)) = state.game.player_by_addr(*addr) {
+                    player.role = NodeRole::Viewer;
+                }
+            }
+        }
+
+        //eprintln!("{role:?}");
 
         match role {
             NodeRole::Master => {
-                // todo
-            }
-
-            NodeRole::Normal => {
-                // todo
+                if self.state.deputy().is_none() {
+                    self.state.choose_deputy();
+                }
             }
 
             NodeRole::Deputy => {
-                // todo
+                let Some(master) = self.state.master() else {
+                    let mut state = self.state.lock();
+                    state.role = NodeRole::Master;
+
+                    if let Some((id, player)) = state.game.player_by_addr(self.comm.ucast_addr()) {
+                        player.role = NodeRole::Master;
+                    }
+
+                    return;
+                };
+
+                if self
+                    .active
+                    .get(&master)
+                    .is_some_and(|time| time.elapsed() > interval)
+                {
+                    let mut state = self.state.lock();
+                    state.role = NodeRole::Master;
+                }
             }
 
+            NodeRole::Normal => {}
             NodeRole::Viewer => {}
         }
     }
