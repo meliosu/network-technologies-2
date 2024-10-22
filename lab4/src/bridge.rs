@@ -28,7 +28,7 @@ impl From<(usize, usize)> for Coord {
 
 impl Snake {
     pub fn body_to_anchors(&self) -> Vec<Coord> {
-        return self.body.iter().map(|&pos| pos.into()).collect();
+        //return self.body.iter().map(|&pos| pos.into()).collect();
 
         let mut shifts: Vec<(i32, i32)> = Vec::new();
 
@@ -90,10 +90,10 @@ impl Snake {
         width: usize,
         height: usize,
     ) -> Vec<(usize, usize)> {
-        return anchors
-            .into_iter()
-            .map(|coord| (coord.x() as usize, coord.y() as usize))
-            .collect();
+        //return anchors
+        //    .into_iter()
+        //    .map(|coord| (coord.x() as usize, coord.y() as usize))
+        //    .collect();
 
         let mut body = Vec::new();
 
@@ -105,40 +105,48 @@ impl Snake {
             let (cx, cy) = (shift.x(), shift.y());
 
             if cx != 0 {
-                for _ in 0..cx {
-                    if cx > 0 {
+                if cx > 0 {
+                    for _ in 0..cx {
                         if x == width - 1 {
                             x = 0;
                         } else {
                             x += 1;
                         }
-                    } else {
+
+                        body.push((x, y));
+                    }
+                } else {
+                    for _ in 0..-cx {
                         if x == 0 {
                             x = width - 1;
                         } else {
                             x -= 1;
                         }
-                    }
 
-                    body.push((x, y));
+                        body.push((x, y));
+                    }
                 }
             } else {
-                for _ in 0..cy {
-                    if cy > 0 {
+                if cy > 0 {
+                    for _ in 0..cy {
                         if y == height - 1 {
                             y = 0;
                         } else {
                             y += 1;
                         }
-                    } else {
+
+                        body.push((x, y));
+                    }
+                } else {
+                    for _ in 0..-cy {
                         if y == 0 {
                             y = height - 1;
                         } else {
                             y -= 1;
                         }
-                    }
 
-                    body.push((x, y));
+                        body.push((x, y));
+                    }
                 }
             }
         }
@@ -260,11 +268,34 @@ impl From<&Game> for GameAnnouncement {
 
 #[cfg(test)]
 mod test {
+    use crate::proto::Direction;
+
     use super::*;
 
     #[test]
     fn body_from_acnhors() {
-        let anchors = vec![(1, 1).into(), (0, 1).into()];
-        assert_eq!(Snake::body_from_anchors(anchors, 10, 10), [(1, 1), (1, 2)]);
+        let bodies = [
+            vec![(0, 0), (0, 1)],
+            vec![(0, 0), (1, 0)],
+            vec![(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)],
+            vec![(0, 0), (0, 1), (1, 1), (1, 2), (2, 2)],
+            vec![(0, 0), (0, 1), (1, 1), (1, 0)],
+        ];
+
+        for body in bodies {
+            let snake = Snake {
+                body: body.clone(),
+                direction: Direction::Down,
+                id: 0,
+            };
+
+            let anchors = snake.body_to_anchors();
+
+            dbg!(&anchors);
+
+            let new_body = Snake::body_from_anchors(anchors, 100, 100);
+
+            assert_eq!(body.clone(), new_body);
+        }
     }
 }

@@ -100,7 +100,8 @@ impl Node {
 
             Type::RoleChange(role_change_msg) => {
                 if role == NodeRole::Master {
-                    //self.state.change_role(role_change_msg, addr);
+                    self.state.change_role(role_change_msg, addr);
+                    self.send_to_master(AckMsg::new(None, None, msg.msg_seq));
                 }
             }
 
@@ -293,12 +294,17 @@ impl Node {
             }
         }
 
-        //eprintln!("{role:?}");
-
         match role {
             NodeRole::Master => {
                 if self.state.deputy().is_none() {
-                    self.state.choose_deputy();
+                    if let Some(deputy_addr) = self.state.choose_deputy() {
+                        let seq = self.free_seq();
+
+                        self.send_to_addr(
+                            RoleChangeMsg::new(0, None, 0, Some(NodeRole::Deputy), seq),
+                            deputy_addr,
+                        );
+                    }
                 }
             }
 

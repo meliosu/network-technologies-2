@@ -53,6 +53,13 @@ pub fn read() -> io::Result<Option<Input>> {
             ..
         }) => Some(Input::View(0)),
 
+        Event::Key(KeyEvent {
+            code: KeyCode::Char(c),
+            ..
+        }) if c.is_ascii_digit() => Some(Input::Join(
+            c.to_digit(10).unwrap().saturating_sub(1) as usize
+        )),
+
         _ => None,
     };
 

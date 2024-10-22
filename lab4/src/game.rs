@@ -68,7 +68,7 @@ impl Snake {
     }
 
     pub fn turn(&mut self, direction: Direction) {
-        if direction != self.direction {
+        if direction != self.direction && direction != self.direction.opposite() {
             self.direction = direction;
         }
     }
@@ -243,7 +243,7 @@ impl Game {
                 } else if second.head() == first.head() {
                     kills.push((first.id, second.id));
                 } else if second.body.contains(&first.head()) {
-                    kills.push((first.id, second.id));
+                    kills.push((second.id, first.id));
                 } else if first.body.contains(&second.head()) {
                     kills.push((second.id, first.id));
                 }

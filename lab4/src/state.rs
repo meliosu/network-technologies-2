@@ -150,12 +150,10 @@ impl State {
         let mut state = self.lock();
 
         let Some((id, _)) = state.game.player_by_addr(addr) else {
-            println!("didn't find player with addr {addr}");
             return;
         };
 
         let Some(snake) = state.game.snake_by_id(id) else {
-            println!("didn't find snake");
             return;
         };
 
@@ -256,6 +254,11 @@ impl State {
                 None
             }
         })
+    }
+
+    pub fn change_role(&self, msg: RoleChangeMsg, addr: SocketAddr) {
+        let mut state = self.lock();
+        state.role = msg.receiver_role();
     }
 
     pub fn choose_deputy(&self) -> Option<SocketAddr> {
