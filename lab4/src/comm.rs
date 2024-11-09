@@ -82,7 +82,7 @@ mod comm {
             std::mem::forget(socket);
 
             let mcast = unsafe { UdpSocket::from_raw_fd(fd) };
-            let ucast = UdpSocket::bind("192.168.75.143:0")?;
+            let ucast = UdpSocket::bind("192.168.1.125:0")?;
 
             Ok(Self {
                 ucast,

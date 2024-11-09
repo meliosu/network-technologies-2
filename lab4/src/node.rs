@@ -35,7 +35,7 @@ pub struct Node {
     seq_gen: Generator,
     peer_msgs: Vec<PeerMessage>,
     master_msgs: Vec<MasterMessage>,
-    active: HashMap<SocketAddr, Instant>,
+    active: HashMap<SocketAddr, (Instant, Instant)>, // send, receive
 }
 
 impl Node {
@@ -79,7 +79,11 @@ impl Node {
             return;
         };
 
-        self.active.insert(addr, Instant::now());
+        if let Some(active) = self.active.get_mut(&addr) {
+            active.1 = Instant::now();
+        } else {
+            self.active.insert(addr, (Instant::now(), Instant::now()));
+        }
 
         let role = self.state.role();
 
@@ -206,31 +210,33 @@ impl Node {
 
     fn on_interval(&mut self, interval: Duration) {
         for msg in &self.peer_msgs {
-            if msg.time.elapsed() > interval * 8 {
-                continue;
-            }
-
-            if msg.time.elapsed() > interval {
-                self.oneshot_send(msg.msg.clone(), msg.addr);
-            }
+            //if msg.time.elapsed() > interval * 8 {
+            //    continue;
+            //}
+            //
+            //if msg.time.elapsed() > interval {
+            //    self.oneshot_send(msg.msg.clone(), msg.addr);
+            //}
         }
 
         if let Some(master) = self.state.master() {
             for msg in &self.master_msgs {
-                if msg.time.elapsed() > interval * 8 {
-                    continue;
-                }
-
-                if msg.time.elapsed() > interval {
-                    self.oneshot_send(msg.msg.clone(), master);
-                }
+                //if msg.time.elapsed() > interval * 8 {
+                //    continue;
+                //}
+                //
+                //if msg.time.elapsed() > interval {
+                //    self.oneshot_send(msg.msg.clone(), master);
+                //}
             }
         }
 
         self.check_dead_nodes(interval * 8);
     }
 
-    fn send_to_master(&mut self, msg: GameMessage) {
+    fn send_to_master(&mut self, mut msg: GameMessage) {
+        msg.sender_id = Some(self.state.id());
+
         if let Some(master) = self.state.master() {
             self.comm.send_ucast(master, &msg).unwrap();
             self.master_msgs.push(MasterMessage {
@@ -240,7 +246,9 @@ impl Node {
         }
     }
 
-    fn send_to_addr(&mut self, msg: GameMessage, addr: SocketAddr) {
+    fn send_to_addr(&mut self, mut msg: GameMessage, addr: SocketAddr) {
+        msg.sender_id = Some(self.state.id());
+
         self.comm.send_ucast(addr, &msg).unwrap();
         self.peer_msgs.push(PeerMessage {
             time: Instant::now(),
@@ -249,7 +257,8 @@ impl Node {
         });
     }
 
-    fn oneshot_send(&self, msg: GameMessage, addr: SocketAddr) {
+    fn oneshot_send(&self, mut msg: GameMessage, addr: SocketAddr) {
+        msg.sender_id = Some(self.state.id());
         self.comm.send_ucast(addr, &msg).unwrap();
     }
 
@@ -286,8 +295,8 @@ impl Node {
     fn check_dead_nodes(&mut self, interval: Duration) {
         let role = self.state.role();
 
-        for (addr, time) in &self.active {
-            if time.elapsed() > interval {
+        for (addr, (send, receive)) in &self.active {
+            if receive.elapsed() > interval {
                 let mut state = self.state.lock();
 
                 if let Some(id) = state.game.players.iter().find_map(|(id, player)| {
@@ -304,6 +313,17 @@ impl Node {
                     player.role = NodeRole::Viewer;
                 }
             }
+        }
+
+        let to_ping: Vec<_> = self
+            .active
+            .iter()
+            .filter_map(|(addr, (send, _))| (send.elapsed() > interval).then_some(*addr))
+            .collect();
+
+        for addr in to_ping {
+            let seq = self.free_seq();
+            self.send_to_addr(PingMsg::new(seq), addr);
         }
 
         match role {
@@ -335,7 +355,7 @@ impl Node {
                 if self
                     .active
                     .get(&master)
-                    .is_some_and(|time| time.elapsed() > interval)
+                    .is_some_and(|(send, receive)| receive.elapsed() > interval)
                 {
                     let mut state = self.state.lock();
                     state.role = NodeRole::Master;

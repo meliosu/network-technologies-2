@@ -270,6 +270,11 @@ impl State {
             }
         })
     }
+
+    pub fn id(&self) -> i32 {
+        let state = self.lock();
+        state.id
+    }
 }
 
 pub mod inner {
