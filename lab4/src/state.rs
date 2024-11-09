@@ -33,7 +33,7 @@ impl State {
     pub fn get_announcement(&self) -> Option<GameMessage> {
         let state = self.lock();
 
-        if state.role != NodeRole::Master {
+        if state.role != NodeRole::Master || state.game.players.is_empty() {
             None
         } else {
             Some(AnnouncementMsg::new((&state.game).into(), 0))
