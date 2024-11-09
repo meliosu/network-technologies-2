@@ -2,5 +2,5 @@ food = 10
 delay = 200
 
 [field]
-width = 30
+width = 40
 height = 40
