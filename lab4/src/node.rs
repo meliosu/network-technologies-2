@@ -238,6 +238,17 @@ impl Node {
             }
         }
 
+        let to_ping: Vec<_> = self
+            .active
+            .iter()
+            .filter_map(|(addr, (send, _))| (send.elapsed() > interval).then_some(*addr))
+            .collect();
+
+        for addr in to_ping {
+            let seq = self.free_seq();
+            self.send_to_addr(PingMsg::new(seq), addr);
+        }
+
         self.check_dead_nodes(interval * 8);
     }
 
@@ -320,17 +331,6 @@ impl Node {
                     player.role = NodeRole::Viewer;
                 }
             }
-        }
-
-        let to_ping: Vec<_> = self
-            .active
-            .iter()
-            .filter_map(|(addr, (send, _))| (send.elapsed() > interval).then_some(*addr))
-            .collect();
-
-        for addr in to_ping {
-            let seq = self.free_seq();
-            self.send_to_addr(PingMsg::new(seq), addr);
         }
 
         match role {
