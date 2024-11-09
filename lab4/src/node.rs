@@ -91,6 +91,7 @@ impl Node {
             Type::Steer(steer_msg) => {
                 if role == NodeRole::Master {
                     self.state.turn_snake_by_addr(addr, steer_msg.direction());
+                    self.oneshot_send(AckMsg::new(None, None, msg.msg_seq), addr);
                 }
             }
 
