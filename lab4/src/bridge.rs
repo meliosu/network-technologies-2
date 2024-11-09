@@ -56,28 +56,11 @@ impl Snake {
             y: Some(head_y as i32),
         });
 
-        let mut dx = 0;
-        let mut dy = 0;
-
-        for shift in shifts.iter() {
-            if dx == 0 && dy == 0 {
-                dx = shift.0;
-                dy = shift.1;
-                continue;
-            }
-
-            if dx == 0 && shift.0 != 0 || dy == 0 && shift.1 != 0 {
-                anchors.push((dx, dy).into());
-                dx = 0;
-                dy = 0;
-            }
-
-            dx += shift.0;
-            dy += shift.1;
-        }
-
-        if dx != 0 || dy != 0 {
-            anchors.push((dx, dy).into());
+        for (dx, dy) in shifts {
+            anchors.push(Coord {
+                x: (dx != 0).then_some(dx),
+                y: (dy != 0).then_some(dy),
+            });
         }
 
         anchors
@@ -95,53 +78,39 @@ impl Snake {
         body.push((x, y));
 
         for shift in anchors.iter().skip(1) {
-            let (cx, cy) = (shift.x(), shift.y());
+            let (dx, dy) = (shift.x(), shift.y());
 
-            if cx != 0 {
-                if cx > 0 {
-                    for _ in 0..cx {
-                        if x == width - 1 {
-                            x = 0;
-                        } else {
-                            x += 1;
-                        }
-
-                        body.push((x, y));
+            if dx != 0 {
+                if dx > 0 {
+                    if x == width - 1 {
+                        x = 0;
+                    } else {
+                        x += 1;
                     }
                 } else {
-                    for _ in 0..-cx {
-                        if x == 0 {
-                            x = width - 1;
-                        } else {
-                            x -= 1;
-                        }
-
-                        body.push((x, y));
+                    if x == 0 {
+                        x = width - 1;
+                    } else {
+                        x -= 1;
                     }
                 }
             } else {
-                if cy > 0 {
-                    for _ in 0..cy {
-                        if y == height - 1 {
-                            y = 0;
-                        } else {
-                            y += 1;
-                        }
-
-                        body.push((x, y));
+                if dy > 0 {
+                    if y == height - 1 {
+                        y = 0;
+                    } else {
+                        y += 1;
                     }
                 } else {
-                    for _ in 0..-cy {
-                        if y == 0 {
-                            y = height - 1;
-                        } else {
-                            y -= 1;
-                        }
-
-                        body.push((x, y));
+                    if y == 0 {
+                        y = height - 1;
+                    } else {
+                        y -= 1;
                     }
                 }
             }
+
+            body.push((x, y));
         }
 
         body
