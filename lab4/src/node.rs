@@ -108,8 +108,6 @@ impl Node {
 
             Type::State(state_msg) => {
                 if role != NodeRole::Master {
-                    eprintln!("got state message from master: {}", addr);
-
                     self.state.update(state_msg.state, self.comm.ucast_addr());
                 }
             }
@@ -151,10 +149,6 @@ impl Node {
                 if role == NodeRole::Master {
                     self.state.turn_self(direction);
                 } else {
-                    let master = self.state.master();
-
-                    eprintln!("sending steer to master: {master:?}");
-
                     let steer = SteerMsg::new(direction, self.free_seq());
                     self.send_to_master(steer);
                 }
