@@ -108,6 +108,16 @@ impl Node {
 
             Type::State(state_msg) => {
                 if role != NodeRole::Master {
+                    eprintln!("state from {addr}: {state_msg:#?}");
+
+                    {
+                        let mut state = self.state.lock();
+
+                        if state.master.is_some_and(|m| m == addr) || state.master.is_none() {
+                            state.master = Some(addr);
+                        }
+                    }
+
                     self.state.update(state_msg.state, self.comm.ucast_addr());
                 }
             }
@@ -167,7 +177,7 @@ impl Node {
             Input::Join(idx) => {
                 if let Some((addr, announcement)) = self.state.nth_announcement(idx) {
                     self.clean_messages();
-                    self.state.new_normal();
+                    self.state.new_normal(announcement.clone());
                     let name = self.state.player_name();
                     let join = JoinMsg::new(
                         name,
@@ -183,7 +193,7 @@ impl Node {
             Input::View(idx) => {
                 if let Some((addr, announcement)) = self.state.nth_announcement(idx) {
                     self.clean_messages();
-                    self.state.new_viewer();
+                    self.state.new_viewer(announcement.clone());
                     let name = self.state.player_name();
                     let join = JoinMsg::new(
                         name,
@@ -310,6 +320,10 @@ impl Node {
         for (addr, (send, receive)) in &self.active {
             if receive.elapsed() > interval {
                 let mut state = self.state.lock();
+
+                if state.master.is_some_and(|a| a == *addr) {
+                    state.master = None;
+                }
 
                 if let Some(id) = state.game.players.iter().find_map(|(id, player)| {
                     if player.addr == *addr {

@@ -79,6 +79,7 @@ impl Snake {
 
         for shift in anchors.iter().skip(1) {
             let (dx, dy) = (shift.x(), shift.y());
+            let (dx, dy) = (dx % width as i32, dy % height as i32);
 
             if dx != 0 {
                 if dx > 0 {
@@ -224,6 +225,40 @@ impl From<&Game> for GameAnnouncement {
             config: game.into(),
             can_join: Some(true),
             game_name: game.name.clone(),
+        }
+    }
+}
+
+impl From<&GameAnnouncement> for Game {
+    fn from(a: &GameAnnouncement) -> Self {
+        Self {
+            name: a.game_name.clone(),
+            delay: a.config.state_delay_ms() as usize,
+            width: a.config.width() as usize,
+            height: a.config.height() as usize,
+            food_const: a.config.food_static() as usize,
+            food: Vec::new(),
+            snakes: Vec::new(),
+            players: a
+                .players
+                .players
+                .clone()
+                .into_iter()
+                .map(|p| {
+                    (
+                        p.id,
+                        Player {
+                            score: p.score as usize,
+                            name: p.name.clone(),
+                            addr: format!("{}:{}", p.ip_address(), p.port())
+                                .parse()
+                                .unwrap_or("0.0.0.0:0".parse().unwrap()),
+                            role: p.role(),
+                        },
+                    )
+                })
+                .collect(),
+            turn: 0,
         }
     }
 }

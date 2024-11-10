@@ -7,7 +7,8 @@ use std::{
 use inner::Announcement;
 
 use crate::{
-    game::Player,
+    config::{Config, Field},
+    game::{Game, Player},
     proto::{
         game_message::{AnnouncementMsg, JoinMsg, RoleChangeMsg},
         Direction, GameAnnouncement, GameMessage, GameState, NodeRole,
@@ -115,15 +116,17 @@ impl State {
         );
     }
 
-    pub fn new_normal(&self) {
+    pub fn new_normal(&self, announcement: GameAnnouncement) {
         let mut state = self.lock();
         *state = inner::State::new();
+        state.game = Game::from(&announcement);
         state.role = NodeRole::Normal;
     }
 
-    pub fn new_viewer(&self) {
+    pub fn new_viewer(&self, announcement: GameAnnouncement) {
         let mut state = self.lock();
         *state = inner::State::new();
+        state.game = Game::from(&announcement);
         state.role = NodeRole::Viewer;
     }
 
@@ -134,6 +137,11 @@ impl State {
 
     pub fn master(&self) -> Option<SocketAddr> {
         let state = self.lock();
+
+        if let Some(master) = state.master {
+            return Some(master);
+        };
+
         state.game.players.iter().find_map(|(_, p)| {
             if p.role == NodeRole::Master {
                 Some(p.addr)
@@ -293,6 +301,7 @@ pub mod inner {
         pub role: NodeRole,
         pub id: i32,
         pub announcements: HashMap<SocketAddr, Announcement>,
+        pub master: Option<SocketAddr>,
     }
 
     #[derive(Clone)]
@@ -310,6 +319,7 @@ pub mod inner {
                 id: 0,
                 game: Game::from_config(&Config::load("snakes.toml")),
                 announcements: HashMap::new(),
+                master: None,
             }
         }
     }
