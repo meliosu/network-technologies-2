@@ -58,8 +58,6 @@ pub fn announcement_receiver(state: State, comm: Communicator) -> io::Result<()>
 
         if let Some(Type::Announcement(announcement)) = msg.r#type {
             if let Some(announcement) = announcement.games.first() {
-                eprintln!("announcement from {addr}: {announcement:#?}");
-
                 state.add_announcement(announcement.clone(), addr);
             }
         }
