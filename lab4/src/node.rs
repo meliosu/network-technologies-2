@@ -108,6 +108,8 @@ impl Node {
 
             Type::State(state_msg) => {
                 if role != NodeRole::Master {
+                    eprintln!("state: {state_msg:#?}");
+
                     {
                         let mut state = self.state.lock();
 

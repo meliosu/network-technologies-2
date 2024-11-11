@@ -79,37 +79,49 @@ impl Snake {
 
         for shift in anchors.iter().skip(1) {
             let (dx, dy) = (shift.x(), shift.y());
-            let (dx, dy) = (dx % width as i32, dy % height as i32);
+            //let (dx, dy) = (
+            //    (dx + width as i32) % width as i32,
+            //    (dy + height as i32) % height as i32,
+            //);
 
-            if dx != 0 {
-                if dx > 0 {
-                    if x == width - 1 {
-                        x = 0;
-                    } else {
-                        x += 1;
-                    }
-                } else {
-                    if x == 0 {
-                        x = width - 1;
-                    } else {
-                        x -= 1;
-                    }
-                }
-            } else {
-                if dy > 0 {
-                    if y == height - 1 {
-                        y = 0;
-                    } else {
-                        y += 1;
-                    }
-                } else {
-                    if y == 0 {
-                        y = height - 1;
-                    } else {
-                        y -= 1;
-                    }
-                }
-            }
+            //let (dx, dy) = (
+            //    ((dx % width as i32) + width as i32) % width as i32,
+            //    ((dy % height as i32) + height as i32) % height as i32,
+            //);
+
+            x = ((((x as i32 + dx as i32) % width as i32) + width as i32) % width as i32) as usize;
+            y = ((((y as i32 + dy as i32) % height as i32) + height as i32) % height as i32)
+                as usize;
+
+            //if dx != 0 {
+            //    if dx > 0 {
+            //        if x == width - 1 {
+            //            x = 0;
+            //        } else {
+            //            x += 1;
+            //        }
+            //    } else {
+            //        if x == 0 {
+            //            x = width - 1;
+            //        } else {
+            //            x -= 1;
+            //        }
+            //    }
+            //} else {
+            //    if dy > 0 {
+            //        if y == height - 1 {
+            //            y = 0;
+            //        } else {
+            //            y += 1;
+            //        }
+            //    } else {
+            //        if y == 0 {
+            //            y = height - 1;
+            //        } else {
+            //            y -= 1;
+            //        }
+            //    }
+            //}
 
             body.push((x, y));
         }
