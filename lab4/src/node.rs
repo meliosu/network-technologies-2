@@ -317,12 +317,20 @@ impl Node {
     fn check_dead_nodes(&mut self, interval: Duration) {
         let role = self.state.role();
 
+        eprintln!("ROLE: {role:?}");
+
+        let mut master_dead = false;
+
         for (addr, (send, receive)) in &self.active {
             if receive.elapsed() > interval {
                 let mut state = self.state.lock();
 
+                eprintln!("{addr} is inactive");
+                eprintln!("players: {:#?}", state.game.players);
+
                 if state.master.is_some_and(|a| a == *addr) {
                     state.master = None;
+                    master_dead = true;
                 }
 
                 if let Some(id) = state.game.players.iter().find_map(|(id, player)| {
@@ -356,6 +364,17 @@ impl Node {
             }
 
             NodeRole::Deputy => {
+                if master_dead {
+                    let mut state = self.state.lock();
+                    state.role = NodeRole::Master;
+
+                    if let Some((_, player)) = state.game.player_by_addr(self.comm.ucast_addr()) {
+                        player.role = NodeRole::Master;
+                    }
+
+                    return;
+                }
+
                 let Some(master) = self.state.master() else {
                     let mut state = self.state.lock();
                     state.role = NodeRole::Master;

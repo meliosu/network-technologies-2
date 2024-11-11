@@ -93,6 +93,7 @@ mod comm {
 
         pub fn ucast_addr(&self) -> SocketAddr {
             self.ucast.local_addr().unwrap()
+            //self.ucast.peer_addr().unwrap()
         }
 
         pub fn send_mcast(&self, msg: &GameMessage) -> io::Result<()> {
