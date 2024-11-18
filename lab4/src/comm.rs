@@ -6,6 +6,8 @@ use std::{
 
 use crate::proto::GameMessage;
 
+const UNICAST_ADDR: &'static str = "172.18.0.1:0";
+
 #[derive(Clone)]
 pub struct Communicator {
     inner: Arc<comm::Communicator>,
@@ -54,6 +56,8 @@ mod comm {
 
     use crate::proto::GameMessage;
 
+    use super::UNICAST_ADDR;
+
     pub struct Communicator {
         mcast: UdpSocket,
         ucast: UdpSocket,
@@ -82,7 +86,7 @@ mod comm {
             std::mem::forget(socket);
 
             let mcast = unsafe { UdpSocket::from_raw_fd(fd) };
-            let ucast = UdpSocket::bind("192.168.1.125:0")?;
+            let ucast = UdpSocket::bind(UNICAST_ADDR)?;
 
             Ok(Self {
                 ucast,
