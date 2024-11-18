@@ -2,9 +2,11 @@ use std::thread;
 
 use lab4::{comm::Communicator, node::Node, state::State, threads};
 
+const MCAST_ADDR: &'static str = "224.0.0.1:8000";
+
 fn main() {
     let state = State::new();
-    let comm = Communicator::new("224.0.0.1:8000").unwrap();
+    let comm = Communicator::new(MCAST_ADDR).unwrap();
 
     let (ucast_tx, ucast_rx) = crossbeam::channel::unbounded();
     let (input_tx, input_rx) = crossbeam::channel::unbounded();

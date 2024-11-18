@@ -243,7 +243,7 @@ impl Node {
         let to_ping: Vec<_> = self
             .active
             .iter()
-            .filter_map(|(addr, (send, _))| (send.elapsed() > interval).then_some(*addr))
+            .filter_map(|(addr, (send, _))| (send.elapsed() > interval / 10).then_some(*addr))
             .collect();
 
         for addr in to_ping {
@@ -341,6 +341,9 @@ impl Node {
                 }
             }
         }
+
+        self.active
+            .retain(|_, (send, receive)| receive.elapsed() < interval);
 
         match role {
             NodeRole::Master => {
