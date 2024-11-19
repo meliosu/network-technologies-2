@@ -2,7 +2,7 @@ use std::thread;
 
 use lab4::{comm::Communicator, node::Node, state::State, threads};
 
-const MCAST_ADDR: &'static str = "224.0.0.1:8000";
+const MCAST_ADDR: &'static str = "224.0.0.251:8000";
 
 fn main() {
     let state = State::new();
