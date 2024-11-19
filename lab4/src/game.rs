@@ -235,17 +235,18 @@ impl Game {
         let mut kills = Vec::new();
 
         for (i, first) in moved.iter().enumerate() {
-            for second in &moved[i..] {
+            for second in &moved[..] {
                 if first.id == second.id {
                     if first.body.iter().filter(|&&p| p == first.head()).count() > 1 {
                         kills.push((first.id, second.id));
                     }
                 } else if second.head() == first.head() {
                     kills.push((first.id, second.id));
+                    kills.push((second.id, first.id));
                 } else if second.body.contains(&first.head()) {
                     kills.push((second.id, first.id));
                 } else if first.body.contains(&second.head()) {
-                    kills.push((second.id, first.id));
+                    kills.push((first.id, second.id));
                 }
             }
         }
