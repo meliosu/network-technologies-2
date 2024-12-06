@@ -1,0 +1,17 @@
+[package]
+name = "lab4"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam = "0.8.4"
+crossterm = "0.28.1"
+prost = "0.13.3"
+rand = "0.8.5"
+ratatui = "0.29.0"
+serde = { version = "1.0.210", features = ["derive"] }
+socket2 = "0.5.7"
+toml = "0.8.19"
+
+[build-dependencies]
+prost-build = "0.13.3"

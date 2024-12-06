@@ -1,0 +1,6 @@
+food = 10
+delay = 1000
+
+[field]
+width = 40
+height = 40
