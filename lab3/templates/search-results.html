@@ -1,0 +1,52 @@
+{% for location in locations %}
+<div class="cell">
+    <div class="box">
+        <h3 class="title is-4">
+            <a hx-get="/places" hx-target="body" hx-push-url="true"
+                hx-vals='{"lat": {{ location.point.lat }}, "lon": {{ location.point.lng }}}'>
+                {% if let Some(name) = location.name %}
+                {{ name }},
+                {% else %}
+                ???,
+                {% endif %}
+
+                {%- if let Some(country) = location.country -%}
+                {{ country }}
+                {% endif %}
+            </a>
+        </h3>
+
+        <h6 class="subtitle is-6">
+            <i>
+                {{ location.point }}
+            </i>
+        </h6>
+
+        {% if let Some(state) = location.city %}
+        <p>
+            <strong>State: </strong> {{ state }}
+
+        </p>
+        {% endif%}
+
+        {% if let Some(city) = location.city %}
+        <p>
+            <strong>City: </strong> {{ city }}
+
+        </p>
+        {% endif%}
+
+        {% if let (Some(street), Some(house)) = (location.street.as_ref(), location.housenumber.as_ref()) %}
+        <p>
+            <strong>Street: </strong> {{ street }}, {{ house }}
+        </p>
+        {% endif %}
+
+        {% if let Some(postcode) = location.postcode %}
+        <p>
+            <strong>Postcode: </strong> {{ postcode }}
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}

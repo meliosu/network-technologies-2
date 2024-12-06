@@ -1,0 +1,15 @@
+[package]
+name = "lab3"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+askama = { version = "0.12.1", features = ["with-axum"] }
+askama_axum = "0.4.0"
+axum = { version = "0.7.6", features = ["macros"]}
+reqwest = { version = "0.12.7", features = ["json"] }
+serde = { version = "1.0.210", features = ["derive"] }
+shuttle-axum = "0.47.0"
+shuttle-runtime = "0.47.0"
+tokio = { version = "1.40.0", features = ["full"] }
+tower-http = { version = "0.6.0", features = ["fs"] }
